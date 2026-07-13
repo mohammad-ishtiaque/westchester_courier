@@ -1,0 +1,3904 @@
+{
+  "info": {
+    "name": "Westchester Courier API",
+    "_postman_id": "b6a1f2b0-0000-4a00-a000-westchestercourier",
+    "description": "Westchester Courier NestJS backend - Auth + Delivery modules.\n\nHOW TO USE:\n1. Import this collection into Postman.\n2. Set the 'baseUrl' collection variable (defaults to http://localhost:8001).\n3. Start the API locally: cd westchester-nestjs && npm install && npm run start:dev (fill in .env first - copy from .env.example).\n4. Run folders TOP TO BOTTOM in the order they appear - later folders depend on variables captured by earlier ones (JWTs, IDs, OTP codes). Use Postman's collection Runner to execute a whole folder in order, or click through manually. Every Tests-tab script auto-captures whatever the next request needs.\n5. Each folder's own requests state their specific prerequisites and needed data in their Description tab.\n\nFOLDER ORDER: Auth Happy Path -> Auth Negative Cases -> Delivery Admin Setup -> Delivery Admin Create & Assign -> Delivery Driver Fulfillment -> Delivery Reject & Cancel -> Delivery Negative Cases.\n\nDEV-MODE CONVENIENCE: in non-production environments, OTP codes are returned directly in API responses (devActivationCode / devVerificationCode) instead of only being emailed, so this collection is testable without a real inbox. Must never be enabled in production.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8001"
+    },
+    {
+      "key": "testName",
+      "value": "Test Driver"
+    },
+    {
+      "key": "testEmail",
+      "value": "driver@example.com"
+    },
+    {
+      "key": "testPassword",
+      "value": "Passw0rd!"
+    },
+    {
+      "key": "testNewPassword",
+      "value": "NewPassw0rd!"
+    },
+    {
+      "key": "devActivationCode",
+      "value": ""
+    },
+    {
+      "key": "devVerificationCode",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "driverUserId",
+      "value": ""
+    },
+    {
+      "key": "adminName",
+      "value": "Test Admin"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@example.com"
+    },
+    {
+      "key": "adminAccessToken",
+      "value": ""
+    },
+    {
+      "key": "adminRefreshToken",
+      "value": ""
+    },
+    {
+      "key": "deliveryId",
+      "value": ""
+    },
+    {
+      "key": "deliveryId2",
+      "value": ""
+    },
+    {
+      "key": "driverAEmail",
+      "value": "driver.a.{{$timestamp}}@wctest.com"
+    },
+    {
+      "key": "driverBEmail",
+      "value": "driver.b.{{$timestamp}}@wctest.com"
+    },
+    {
+      "key": "driverCEmail",
+      "value": "driver.c.{{$timestamp}}@wctest.com"
+    },
+    {
+      "key": "driverAId",
+      "value": ""
+    },
+    {
+      "key": "driverBId",
+      "value": ""
+    },
+    {
+      "key": "driverCId",
+      "value": ""
+    },
+    {
+      "key": "vehicleAId",
+      "value": ""
+    },
+    {
+      "key": "vehicleBId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth: Happy Path (run in order)",
+      "item": [
+        {
+          "name": "1. Register Driver",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "PREREQUISITE: none - entry point of the whole Auth flow. Creates an inactive Auth + Driver profile and emails (or in dev, returns) a 6-digit activation code. DATA NEEDED: name, email, password, confirmPassword (must match), role. NEXT STEP: run '2. Activate Account'.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{testName}}\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"confirmPassword\": \"{{testPassword}}\",\n  \"role\": \"DRIVER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const unique = Date.now();",
+                  "pm.collectionVariables.set('testEmail', 'driver.' + unique + '@example.com');",
+                  "pm.collectionVariables.set('testName', 'Test Driver ' + unique);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Response has success:true', function () { pm.expect(pm.response.json().success).to.be.true; });",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.devActivationCode) {",
+                  "    pm.collectionVariables.set('devActivationCode', json.data.devActivationCode);",
+                  "    console.log('Captured devActivationCode:', json.data.devActivationCode);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Resend Activation Code (optional)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/resend-activation-code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "resend-activation-code"
+              ]
+            },
+            "description": "PREREQUISITE: '1. Register Driver'. Use only if the original code expired (3 min) or you want a fresh one. Optional - skip straight to step 3 if your code is still fresh.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.devActivationCode) {",
+                  "    pm.collectionVariables.set('devActivationCode', json.data.devActivationCode);",
+                  "    console.log('Captured devActivationCode:', json.data.devActivationCode);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Activate Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/activate-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "activate-account"
+              ]
+            },
+            "description": "PREREQUISITE: '1. Register Driver'. On success, isActive:true and real JWTs are issued - this doubles as a login. Also captures driverUserId for the Delivery module later.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"activationCode\": \"{{devActivationCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Returns accessToken and refreshToken', function () {",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('accessToken');",
+                  "    pm.expect(data).to.have.property('refreshToken');",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "    pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "    console.log('Captured accessToken/refreshToken');",
+                  "    try {",
+                  "        const payload = JSON.parse(atob(json.data.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "        if (payload.role === 'DRIVER') {",
+                  "            pm.collectionVariables.set('driverUserId', payload.userId);",
+                  "            console.log('Captured driverUserId:', payload.userId);",
+                  "        }",
+                  "    } catch (e) { console.log('Could not decode JWT payload', e); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "PREREQUISITE: '3. Activate Account' (account must be isActive:true). Re-captures tokens - useful any time your token expires.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "    pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "    console.log('Captured accessToken/refreshToken');",
+                  "    try {",
+                  "        const payload = JSON.parse(atob(json.data.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "        if (payload.role === 'DRIVER') {",
+                  "            pm.collectionVariables.set('driverUserId', payload.userId);",
+                  "            console.log('Captured driverUserId:', payload.userId);",
+                  "        }",
+                  "    } catch (e) { console.log('Could not decode JWT payload', e); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ]
+            },
+            "description": "PREREQUISITE: an account must exist (does not need to be activated). NEXT STEP: '6. Verify OTP'.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.devVerificationCode) {",
+                  "    pm.collectionVariables.set('devVerificationCode', json.data.devVerificationCode);",
+                  "    console.log('Captured devVerificationCode:', json.data.devVerificationCode);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "description": "PREREQUISITE: '5. Forgot Password'. Sets isVerified:true, a one-time gate '7. Reset Password' checks.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"code\": \"{{devVerificationCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            },
+            "description": "PREREQUISITE: '6. Verify OTP'. After this the password is {{testNewPassword}}, not {{testPassword}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"newPassword\": \"{{testNewPassword}}\",\n  \"confirmPassword\": \"{{testNewPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Change Password (protected)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "PREREQUISITE: a valid accessToken AND '7. Reset Password' must have run first (oldPassword here is what step 7 set it to). The only protected Auth endpoint - use it to confirm JwtAuthGuard/RolesGuard works. Resets password back to {{testPassword}} so the folder is re-runnable.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"{{testNewPassword}}\",\n  \"newPassword\": \"{{testPassword}}\",\n  \"confirmPassword\": \"{{testPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth: Negative Cases",
+      "item": [
+        {
+          "name": "Register - Password Mismatch (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Confirms the password/confirmPassword check rejects a mismatch.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mismatch Test\",\n  \"email\": \"mismatch.{{$timestamp}}@example.com\",\n  \"password\": \"Passw0rd!\",\n  \"confirmPassword\": \"DifferentPass!\",\n  \"role\": \"DRIVER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - Invalid Role (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "class-validator's @IsEnum should reject this before it reaches AuthService.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Role Test\",\n  \"email\": \"badrole.{{$timestamp}}@example.com\",\n  \"password\": \"Passw0rd!\",\n  \"confirmPassword\": \"Passw0rd!\",\n  \"role\": \"NOT_A_REAL_ROLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Wrong Password (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "PREREQUISITE: run the happy-path folder first. Confirms bcrypt comparison fails closed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"definitely-wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Account Not Activated (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "This targets an email that was never registered, which 400s for a different reason (not found) - swap in a real registered-but-not-yet-activated email to test the isActive branch specifically.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"unactivated.{{$timestamp}}@example.com\",\n  \"password\": \"whatever\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Password - No Token (expect 401)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "Omits the Authorization header - confirms JwtAuthGuard blocks unauthenticated requests (fails closed).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"x\",\n  \"newPassword\": \"y\",\n  \"confirmPassword\": \"y\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Password - Garbage Token (expect 401)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer this.is.not.a.valid.jwt"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "Sends an invalid JWT - confirms JwtAuthGuard's verify() failure path is reached and rejected.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"x\",\n  \"newPassword\": \"y\",\n  \"confirmPassword\": \"y\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Activate Account - Wrong Code (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/activate-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "activate-account"
+              ]
+            },
+            "description": "PREREQUISITE: '1. Register Driver'. Sends a deliberately wrong code to confirm rejection.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"activationCode\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delivery: Admin Setup",
+      "item": [
+        {
+          "name": "1. Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "PREREQUISITE: run the Auth 'Happy Path' folder first (needs driverUserId captured from that folder's step 3, used later in 'Assign Driver'). Admin registration skips the activation email but still returns devActivationCode in dev mode.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{adminName}}\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"confirmPassword\": \"{{testPassword}}\",\n  \"role\": \"ADMIN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const unique = Date.now();",
+                  "pm.collectionVariables.set('adminEmail', 'admin.' + unique + '@example.com');",
+                  "pm.collectionVariables.set('adminName', 'Test Admin ' + unique);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.devActivationCode) {",
+                  "    pm.collectionVariables.set('devActivationCode', json.data.devActivationCode);",
+                  "    console.log('Captured devActivationCode:', json.data.devActivationCode);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Activate Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/activate-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "activate-account"
+              ]
+            },
+            "description": "PREREQUISITE: '1. Register Admin'. Captures adminAccessToken separately from the driver's accessToken - every Delivery request below uses whichever token matches its required role.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"activationCode\": \"{{devActivationCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.accessToken) {",
+                  "    pm.collectionVariables.set('adminAccessToken', json.data.accessToken);",
+                  "    pm.collectionVariables.set('adminRefreshToken', json.data.refreshToken);",
+                  "    console.log('Captured adminAccessToken/adminRefreshToken');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delivery: Admin Create & Assign",
+      "item": [
+        {
+          "name": "3. Create Delivery",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin'. Required: customerName, customerPhone, pickupAddress, dropoffAddress. Optional: *Lng/*Lat, packageDescription. Creates in PENDING status, unassigned.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Alice Customer\",\n  \"customerPhone\": \"555-0123\",\n  \"pickupAddress\": \"100 Main St, Westchester, NY\",\n  \"pickupLng\": -73.7949,\n  \"pickupLat\": 41.0409,\n  \"dropoffAddress\": \"200 Broadway, White Plains, NY\",\n  \"dropoffLng\": -73.7629,\n  \"dropoffLat\": 41.0339,\n  \"packageDescription\": \"Small package, 2 lbs\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('deliveryId', json.data._id);",
+                  "console.log('Captured deliveryId:', json.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3b. Get Delivery Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}"
+              ]
+            },
+            "description": "PREREQUISITE: '3. Create Delivery'. No @Roles restriction on this route - both ADMIN and DRIVER tokens work, but a DRIVER only succeeds if the delivery is assigned to them (a service-level ownership check, not a route guard). Used here with the admin token."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Order number present', function () {",
+                  "    pm.expect(pm.response.json().data.orderNumber).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Assign Driver to Delivery",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "assign"
+              ]
+            },
+            "description": "PREREQUISITE: '3. Create Delivery' AND Auth step 3 (driverUserId). Stays PENDING after assignment - the driver still has to accept it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"{{driverUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Admin - List All Deliveries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries?status=PENDING&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries?status=PENDING&page=1&limit=20"
+              ]
+            },
+            "description": "Query params are all optional. Remove '?status=PENDING' to see every delivery."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Admin - Update Delivery (still PENDING)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}"
+              ]
+            },
+            "description": "PREREQUISITE: '3. Create Delivery'. Only works while status is PENDING.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"packageDescription\": \"Small package, 2 lbs - FRAGILE, updated note\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delivery: Driver Fulfillment",
+      "item": [
+        {
+          "name": "6b. Driver - Get Stats (Home screen)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/stats/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "stats",
+                "summary"
+              ]
+            },
+            "description": "PREREQUISITE: Auth folder step 3 (driver token). Powers the Figma 'Home' screen \u2014 pendingCount, activeCount, completedToday, and completedLast7Days (a day-by-day count used for the chart). NOTE: the exact chart metric in Figma couldn't be confirmed field-by-field \u2014 this returns 'deliveries completed per day' as the best available proxy without exact design data. Flag this if the real design tracks something else (e.g. earnings)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Has pendingCount and activeCount', function () {",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('pendingCount');",
+                  "    pm.expect(data).to.have.property('activeCount');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Driver - Get My Deliveries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/my?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "my?page=1&limit=20"
+              ]
+            },
+            "description": "PREREQUISITE: '4. Assign Driver to Delivery'. Uses the driver's own accessToken."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('At least one delivery assigned', function () {",
+                  "    pm.expect(pm.response.json().data.length).to.be.greaterThan(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Driver - Accept Delivery",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "accept"
+              ]
+            },
+            "description": "PREREQUISITE: '4. Assign Driver to Delivery'. Only works from PENDING, only for the assigned driver."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Driver - Mark Picked Up",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/picked-up",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "picked-up"
+              ]
+            },
+            "description": "PREREQUISITE: '8. Driver - Accept Delivery' (must be ACCEPTED first)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Driver - Mark In Transit",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/in-transit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "in-transit"
+              ]
+            },
+            "description": "PREREQUISITE: '9. Driver - Mark Picked Up' (must be PICKED_UP first)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11. Driver - Update Location",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/location",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "location"
+              ]
+            },
+            "description": "Works at any status; realistically called repeatedly while IN_TRANSIT. Plain REST/poll-based for now - see the testing guide's Socket.IO section for the future real-time version.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lng\": -73.78,\n  \"lat\": 41.0375\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12. Driver - Submit Proof of Delivery",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/proof-of-delivery",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "proof-of-delivery"
+              ]
+            },
+            "description": "PREREQUISITE: '10. Driver - Mark In Transit' (must be IN_TRANSIT). proofOfDeliveryImage is a URL for now (file upload is a future Uploads module). Completes the happy path.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proofOfDeliveryImage\": \"https://example.com/proof-photos/sample.jpg\",\n  \"recipientName\": \"Alice Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is now DELIVERED', function () {",
+                  "    pm.expect(pm.response.json().data.status).to.eql('DELIVERED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delivery: Reject & Cancel Flow",
+      "item": [
+        {
+          "name": "13. Admin - Create Second Delivery (for reject/cancel testing)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            },
+            "description": "A separate delivery from step 3 so reject/cancel testing doesn't disturb the completed DELIVERED order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Bob Customer\",\n  \"customerPhone\": \"555-0199\",\n  \"pickupAddress\": \"300 Elm St, Yonkers, NY\",\n  \"dropoffAddress\": \"400 Oak Ave, New Rochelle, NY\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('deliveryId2', json.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14. Admin - Assign Driver to Second Delivery",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId2}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId2}}",
+                "assign"
+              ]
+            },
+            "description": "PREREQUISITE: '13. Admin - Create Second Delivery'.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"{{driverUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15. Driver - Reject Delivery",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId2}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId2}}",
+                "reject"
+              ]
+            },
+            "description": "PREREQUISITE: '14. Admin - Assign Driver to Second Delivery'. Only works from PENDING. Clears assignedDriver so the order could be reassigned.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Vehicle breakdown, can't fulfill this one\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Status is REJECTED and driver unassigned', function () {",
+                  "    const data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.eql('REJECTED');",
+                  "    pm.expect(data.assignedDriver).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16. Admin - Cancel Delivery",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId2}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId2}}",
+                "cancel"
+              ]
+            },
+            "description": "PREREQUISITE: '15. Driver - Reject Delivery' (or any status except DELIVERED). Admin-only - cancels the order entirely, distinct from a driver reject (which just un-assigns)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delivery: Negative Cases",
+      "item": [
+        {
+          "name": "Create Delivery as DRIVER (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries"
+              ]
+            },
+            "description": "Uses the DRIVER's accessToken against an ADMIN-only route - confirms RolesGuard blocks a wrong-role token, not just a missing one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Should Fail\",\n  \"customerPhone\": \"555-0000\",\n  \"pickupAddress\": \"N/A\",\n  \"dropoffAddress\": \"N/A\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accept Delivery Not Assigned To You (expect 403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId2}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId2}}",
+                "accept"
+              ]
+            },
+            "description": "PREREQUISITE: run '16. Admin - Cancel Delivery' first so this delivery is no longer assigned to the test driver. Confirms the ownership check in DeliveryService fires."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign Driver - Invalid Mongo ID (expect 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "assign"
+              ]
+            },
+            "description": "Confirms @IsMongoId() on AssignDriverDto rejects a malformed ID before it reaches the database.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"not-a-valid-mongo-id\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Profile: Settings (driver + admin)",
+      "item": [
+        {
+          "name": "1. Driver - Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/profile/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profile",
+                "me"
+              ]
+            },
+            "description": "PREREQUISITE: Auth folder step 3 (driver token). Works for ANY authenticated role - routes to the User or Admin collection based on the role in your JWT."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Driver - Update My Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/profile/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profile",
+                "me"
+              ]
+            },
+            "description": "All fields optional: name, phoneNumber, profileImage (a URL), address. Only fields you send are changed - everything else is left as-is.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"555-0142\",\n  \"address\": \"12 Elm St, Yonkers, NY\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('phoneNumber updated', function () { pm.expect(pm.response.json().data.phoneNumber).to.eql('555-0142'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Admin - Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/profile/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profile",
+                "me"
+              ]
+            },
+            "description": "PREREQUISITE: Delivery: Admin Setup folder (adminAccessToken). Same endpoint as the driver version above - routed to the Admin collection instead, based on role."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Admin - Update My Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/profile/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profile",
+                "me"
+              ]
+            },
+            "description": "Same endpoint, admin token - confirms the role-routing logic in ProfileService works both directions, not just for drivers.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Admin Name\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Driver Management: Admin CRUD",
+      "item": [
+        {
+          "name": "1. Create Driver A (assignable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' from Delivery: Admin Setup. Admin-created driver, account is immediately active (no OTP flow). Captures driverAId for later Vehicle assignment tests.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Driver A\",\n  \"email\": \"{{driverAEmail}}\",\n  \"password\": \"driverPass123\",\n  \"phoneNumber\": \"555-0200\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Request succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('driverAId', json.data._id);",
+                  "console.log('Captured driverAId:', json.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Create Driver B (reassignment target)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ]
+            },
+            "description": "Second driver, used later in Vehicle Management to test that reassigning a vehicle correctly unassigns it from Driver A and assigns it to Driver B.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Driver B\",\n  \"email\": \"{{driverBEmail}}\",\n  \"password\": \"driverPass123\",\n  \"phoneNumber\": \"555-0201\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Request succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('driverBId', json.data._id);",
+                  "console.log('Captured driverBId:', json.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Create Driver C (throwaway, for delete test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ]
+            },
+            "description": "Never assigned a vehicle - exists purely to prove DELETE works on an eligible driver.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Driver C\",\n  \"email\": \"{{driverCEmail}}\",\n  \"password\": \"driverPass123\",\n  \"phoneNumber\": \"555-0202\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Request succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('driverCId', json.data._id);",
+                  "console.log('Captured driverCId:', json.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Get Driver A By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverAId}}"
+              ]
+            },
+            "description": "PREREQUISITE: '1. Create Driver A'."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Includes isActive/isBlocked from Auth', function () { const j = pm.response.json(); pm.expect(j.data).to.have.property('isActive'); pm.expect(j.data).to.have.property('isBlocked'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. List All Drivers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Paginated list backing the admin dashboard Drivers table. Supports optional ?search=name-or-email."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns paginated meta', function () { const j = pm.response.json(); pm.expect(j.data.meta).to.have.property('total'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Update Driver A",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverAId}}"
+              ]
+            },
+            "description": "PREREQUISITE: '1. Create Driver A'. All fields optional (PartialType).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"555-9999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Block Driver A",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverAId}}/block",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverAId}}",
+                "block"
+              ]
+            },
+            "description": "Sets Auth.isBlocked = true. Blocked drivers fail login (see Auth: Negative Cases pattern)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('isBlocked is true', function () { pm.expect(pm.response.json().data.isBlocked).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Unblock Driver A",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverAId}}/unblock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverAId}}",
+                "unblock"
+              ]
+            },
+            "description": "Reverses the previous step so Driver A can keep being used in later requests."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('isBlocked is false', function () { pm.expect(pm.response.json().data.isBlocked).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Negative - Create Driver Duplicate Email (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ]
+            },
+            "description": "Re-uses Driver A's email. Must fail with 409 Conflict.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Driver A Dupe\",\n  \"email\": \"{{driverAEmail}}\",\n  \"password\": \"driverPass123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 409', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Remove Driver C",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverCId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverCId}}"
+              ]
+            },
+            "description": "PREREQUISITE: '3. Create Driver C'. Driver C has no assigned vehicle, so this must succeed."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Vehicle Management: Admin CRUD",
+      "item": [
+        {
+          "name": "1. Create Vehicle A (assignable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' from Delivery: Admin Setup. Captures vehicleAId, used for assignment tests below.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"make\": \"Ford\",\n  \"vehicleModelName\": \"Transit\",\n  \"year\": 2022,\n  \"plateNumber\": \"WC-100A\",\n  \"vehicleType\": \"Van\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Request succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('vehicleAId', json.data._id);",
+                  "console.log('Captured vehicleAId:', json.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Create Vehicle B (throwaway, for delete test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles"
+              ]
+            },
+            "description": "Never assigned - exists purely to prove DELETE works on an eligible vehicle.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"make\": \"Honda\",\n  \"vehicleModelName\": \"Civic\",\n  \"year\": 2021,\n  \"plateNumber\": \"WC-100B\",\n  \"vehicleType\": \"Car\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Request succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('vehicleBId', json.data._id);",
+                  "console.log('Captured vehicleBId:', json.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. List All Vehicles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Paginated list backing the admin dashboard Vehicles table. Supports optional ?status=ACTIVE|MAINTENANCE|INACTIVE."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Get Vehicle A By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{vehicleAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{vehicleAId}}"
+              ]
+            },
+            "description": "PREREQUISITE: '1. Create Vehicle A'."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Update Vehicle A",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{vehicleAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{vehicleAId}}"
+              ]
+            },
+            "description": "All fields optional (PartialType). Sets status back to ACTIVE isn't required for later steps.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"MAINTENANCE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Assign Vehicle A to Driver A",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{vehicleAId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{vehicleAId}}",
+                "assign"
+              ]
+            },
+            "description": "PREREQUISITE: 'Vehicle Management 1' + 'Driver Management 1'. Sets vehicle.assignedDriver AND the reverse User.assignedVehicle in the same call.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"{{driverAId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('assignedDriver is Driver A', function () { const j = pm.response.json(); pm.expect(j.data.assignedDriver).to.satisfy(v => v === pm.collectionVariables.get('driverAId') || (v && v._id === pm.collectionVariables.get('driverAId'))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Negative - Remove Vehicle A While Assigned (expect 400)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{vehicleAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{vehicleAId}}"
+              ]
+            },
+            "description": "Vehicle A is still assigned to Driver A - must be blocked with 400 until unassigned/reassigned."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Reassign Vehicle A to Driver B",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{vehicleAId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{vehicleAId}}",
+                "assign"
+              ]
+            },
+            "description": "PREREQUISITE: 'Driver Management 2'. Proves the two-way sync: Driver A's assignedVehicle is cleared, Driver B's assignedVehicle is set, in the same call.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"{{driverBId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Confirm Driver A Was Freed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverAId}}"
+              ]
+            },
+            "description": "Driver A should no longer show an assignedVehicle after step 8 reassigned it away."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Driver A has no assignedVehicle', function () { const j = pm.response.json(); pm.expect(j.data.assignedVehicle).to.be.oneOf([null, undefined]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Remove Vehicle B",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vehicles/{{vehicleBId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vehicles",
+                "{{vehicleBId}}"
+              ]
+            },
+            "description": "PREREQUISITE: 'Vehicle Management 2'. Never assigned, so this must succeed."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11. Negative - Remove Driver B While Assigned a Vehicle (expect 400)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverBId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverBId}}"
+              ]
+            },
+            "description": "Driver B now holds Vehicle A (from step 8) - must be blocked with 400 until unassigned."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12. Cleanup - Remove Driver A (now unassigned)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverAId}}"
+              ]
+            },
+            "description": "Driver A was freed in step 8, so removal now succeeds. Leaves Driver B + Vehicle A assigned to each other as residual state, which is fine for a dev/test database."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Customer: Admin Read-Only",
+      "item": [
+        {
+          "name": "1. List All Customers (admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/customers?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "customers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' (Delivery: Admin Setup) + at least one created delivery (Delivery: Admin Create & Assign). Read-only, derived from Delivery.customerName/customerPhone grouped by phone - there's no separate Customer login/account in this app."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns paginated meta', function () { const j = pm.response.json(); pm.expect(j.data.meta).to.have.property('total'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Get Customer By Phone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/customers/555-0123",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "customers",
+                "555-0123"
+              ]
+            },
+            "description": "PREREQUISITE: '3. Create Delivery' (Delivery: Admin Create & Assign) used customerPhone '555-0123' (Alice Customer) - this looks up that same customer's order history."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Includes order history array', function () { const j = pm.response.json(); pm.expect(j.data.orders).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Negative - Unknown Phone (expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/customers/000-0000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "customers",
+                "000-0000"
+              ]
+            },
+            "description": "No delivery exists for this phone number."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 404', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Analytics: Admin Dashboard",
+      "item": [
+        {
+          "name": "1. Get Overview KPIs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/analytics/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "analytics",
+                "overview"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' (Delivery: Admin Setup). Backs the dashboard's top KPI cards: totalDeliveries, deliveriesByStatus breakdown, completionRate, totalDrivers, totalVehicles, totalCustomers."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Has completionRate and status breakdown', function () { const j = pm.response.json(); pm.expect(j.data).to.have.property('completionRate'); pm.expect(j.data).to.have.property('deliveriesByStatus'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Get Chart (last 7 days)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/analytics/chart?days=7",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "analytics",
+                "chart"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7"
+                }
+              ]
+            },
+            "description": "No Payment/pricing model exists in this app, so this is a delivery-volume-over-time proxy for the Figma revenue chart (see POSTMAN_TESTING_GUIDE.md). Every day in range is included, even ones with zero orders."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns 7 daily buckets', function () { const j = pm.response.json(); pm.expect(j.data).to.have.lengthOf(7); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Negative - Chart with invalid days (expect 400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/analytics/chart?days=9999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "analytics",
+                "chart"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "days is capped at 90 by AnalyticsChartQueryDto."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CMS: Terms, Privacy, About, FAQ, Contact",
+      "item": [
+        {
+          "name": "1a. Get Terms & Conditions (public)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/terms-conditions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "terms-conditions"
+              ]
+            },
+            "description": "Public - no auth needed (@Public()). Returns null data until the admin sets it via the PATCH below."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1b. Admin - Upsert Terms & Conditions",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/terms-conditions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "terms-conditions"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' (Delivery: Admin Setup). First call creates the singleton document, every call after that updates the same one in place (upsert pattern).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"By using Westchester Courier, you agree to these terms...\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Message indicates created or updated', function () { const m = pm.response.json().message; pm.expect(m).to.match(/Created|Updated/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1c. Get Terms & Conditions Again (confirm write)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/terms-conditions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "terms-conditions"
+              ]
+            },
+            "description": "Confirms the PATCH above actually persisted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('description matches what was just written', function () { const j = pm.response.json(); pm.expect(j.data.description).to.eql(\"By using Westchester Courier, you agree to these terms...\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2a. Get Privacy Policy (public)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/privacy-policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "privacy-policy"
+              ]
+            },
+            "description": "Public - no auth needed (@Public()). Returns null data until the admin sets it via the PATCH below."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2b. Admin - Upsert Privacy Policy",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/privacy-policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "privacy-policy"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' (Delivery: Admin Setup). First call creates the singleton document, every call after that updates the same one in place (upsert pattern).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"We collect location and delivery data to fulfill your orders...\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Message indicates created or updated', function () { const m = pm.response.json().message; pm.expect(m).to.match(/Created|Updated/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2c. Get Privacy Policy Again (confirm write)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/privacy-policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "privacy-policy"
+              ]
+            },
+            "description": "Confirms the PATCH above actually persisted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('description matches what was just written', function () { const j = pm.response.json(); pm.expect(j.data.description).to.eql(\"We collect location and delivery data to fulfill your orders...\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3a. Get About Us (public)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/about-us",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "about-us"
+              ]
+            },
+            "description": "Public - no auth needed (@Public()). Returns null data until the admin sets it via the PATCH below."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3b. Admin - Upsert About Us",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/about-us",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "about-us"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' (Delivery: Admin Setup). First call creates the singleton document, every call after that updates the same one in place (upsert pattern).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Westchester Courier connects local drivers with same-day deliveries.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Message indicates created or updated', function () { const m = pm.response.json().message; pm.expect(m).to.match(/Created|Updated/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3c. Get About Us Again (confirm write)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/about-us",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "about-us"
+              ]
+            },
+            "description": "Confirms the PATCH above actually persisted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('description matches what was just written', function () { const j = pm.response.json(); pm.expect(j.data.description).to.eql(\"Westchester Courier connects local drivers with same-day deliveries.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4a. Get FAQ (public)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/faq",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "faq"
+              ]
+            },
+            "description": "Public - no auth needed (@Public()). Returns null data until the admin sets it via the PATCH below."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4b. Admin - Upsert FAQ",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/faq",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "faq"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' (Delivery: Admin Setup). First call creates the singleton document, every call after that updates the same one in place (upsert pattern).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Q: How do I track my delivery? A: Use the tracking link in your confirmation.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Message indicates created or updated', function () { const m = pm.response.json().message; pm.expect(m).to.match(/Created|Updated/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4c. Get FAQ Again (confirm write)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/faq",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "faq"
+              ]
+            },
+            "description": "Confirms the PATCH above actually persisted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('description matches what was just written', function () { const j = pm.response.json(); pm.expect(j.data.description).to.eql(\"Q: How do I track my delivery? A: Use the tracking link in your confirmation.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5a. Get Contact Us (public)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contact-us",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contact-us"
+              ]
+            },
+            "description": "Public - no auth needed (@Public()). Returns null data until the admin sets it via the PATCH below."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5b. Admin - Upsert Contact Us",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/contact-us",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "contact-us"
+              ]
+            },
+            "description": "PREREQUISITE: '2. Activate Admin' (Delivery: Admin Setup). First call creates the singleton document, every call after that updates the same one in place (upsert pattern).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Reach us at support@westchestercourier.com or (555) 010-0100.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Message indicates created or updated', function () { const m = pm.response.json().message; pm.expect(m).to.match(/Created|Updated/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5c. Get Contact Us Again (confirm write)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/contact-us",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "contact-us"
+              ]
+            },
+            "description": "Confirms the PATCH above actually persisted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('description matches what was just written', function () { const j = pm.response.json(); pm.expect(j.data.description).to.eql(\"Reach us at support@westchestercourier.com or (555) 010-0100.\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Negative - Upsert Terms as DRIVER (expect 403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/terms-conditions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "terms-conditions"
+              ]
+            },
+            "description": "Uses the driver token captured in Auth: Happy Path - CMS writes are admin-only.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"should not be allowed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
