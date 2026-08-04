@@ -101,6 +101,14 @@
     {
       "key": "vehicleBId",
       "value": ""
+    },
+    {
+      "key": "createdDriverId",
+      "value": ""
+    },
+    {
+      "key": "q",
+      "value": "Jane"
     }
   ],
   "item": [
@@ -157,7 +165,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
-                  "pm.test('Response has success:true', function () { pm.expect(pm.response.json().success).to.be.true; });",
+                  "pm.test('Response has message string', function () { pm.expect(pm.response.json().message).to.be.a('string'); });",
                   "const json = pm.response.json();",
                   "if (json.data && json.data.devActivationCode) {",
                   "    pm.collectionVariables.set('devActivationCode', json.data.devActivationCode);",
@@ -984,7 +992,7 @@
             "description": "PREREQUISITE: '2. Activate Admin'. Required: customerName, customerPhone, pickupAddress, dropoffAddress. Optional: *Lng/*Lat, packageDescription. Creates in PENDING status, unassigned.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerName\": \"Alice Customer\",\n  \"customerPhone\": \"555-0123\",\n  \"pickupAddress\": \"100 Main St, Westchester, NY\",\n  \"pickupLng\": -73.7949,\n  \"pickupLat\": 41.0409,\n  \"dropoffAddress\": \"200 Broadway, White Plains, NY\",\n  \"dropoffLng\": -73.7629,\n  \"dropoffLat\": 41.0339,\n  \"packageDescription\": \"Small package, 2 lbs\"\n}",
+              "raw": "{\n  \"customerName\": \"Jane Smith\",\n  \"customerEmail\": \"jane.smith@example.com\",\n  \"customerPhone\": \"+19145550123\",\n  \"pickupContact\": \"Building Security / Gate 2\",\n  \"pickupAddress\": \"100 Main St, White Plains, NY\",\n  \"pickupDate\": \"2026-08-10T10:00:00.000Z\",\n  \"preferrablePickupTime\": \"10:00 AM - 12:00 PM\",\n  \"pickupNote\": \"Ring doorbell twice\",\n  \"pickupLng\": -73.76291,\n  \"pickupLat\": 41.03398,\n  \"receiverName\": \"Bob Johnson\",\n  \"receiverPhone\": \"+19145550999\",\n  \"dropoffAddress\": \"200 Mamaroneck Ave, White Plains, NY\",\n  \"preferrableDeliveryDate\": \"2026-08-10T14:00:00.000Z\",\n  \"deliveryNote\": \"Leave at front reception\",\n  \"dropoffLng\": -73.765,\n  \"dropoffLat\": 41.036,\n  \"title\": \"Document Package\",\n  \"parcelType\": \"Box\",\n  \"weight\": \"5 lbs\",\n  \"packageDescription\": \"Handle with care\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1195,6 +1203,31 @@
             },
             "description": "Public unauthenticated endpoint used when customers open the shareable live tracking link. Returns order status, pickup/dropoff coordinates, current driver live location, driver name, photo, and phone number."
           }
+        },
+        {
+          "name": "4b. Admin Remove Assigned Driver (before acceptance)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/remove-driver",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "remove-driver"
+              ]
+            },
+            "description": "PREREQUISITE: Admin token. Delivery status must be ASSIGNED (before driver accepts). Once accepted by driver, returns 400 Bad Request."
+          },
+          "response": []
         }
       ]
     },
@@ -1202,7 +1235,62 @@
       "name": "Delivery: Driver Fulfillment",
       "item": [
         {
-          "name": "6b. Driver - Get Stats (Home screen)",
+          "name": "0. UNIFIED STATUS API: Change Delivery Status (Single Endpoint for All Stepper Transitions)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "status"
+              ]
+            },
+            "description": "UNIFIED STATUS ENDPOINT: Allows drivers or admins to update the delivery status using one single API route with body payload.\n\nSUPPORTED STATUS TRANSITIONS:\n- DRIVER_ACCEPTED: Driver accepts assigned order.\n- REJECTED: Driver rejects order (pass 'reason').\n- DRIVER_TO_PICKUP: Arrive at pickup.\n- PICKED_UP: Confirm package pickup.\n- IN_TRANSIT: Arrive at delivery / in transit.\n- OUT_FOR_DELIVERY: Arrive at dropoff location.\n- DELIVERED: Complete delivery (pass 'proofOfDeliveryImage' and 'recipientName').",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "status",
+                  "value": "DELIVERED",
+                  "type": "text"
+                },
+                {
+                  "key": "recipientName",
+                  "value": "Jenny Wilson",
+                  "type": "text"
+                },
+                {
+                  "key": "proofOfDeliveryImage",
+                  "type": "file",
+                  "src": "",
+                  "description": "Proof of Delivery photo upload (File)"
+                },
+                {
+                  "key": "reason",
+                  "value": "Optional rejection reason if status is REJECTED",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "1. Driver Stats Summary (Homepage Card)",
           "request": {
             "method": "GET",
             "header": [
@@ -1222,28 +1310,12 @@
                 "summary"
               ]
             },
-            "description": "PREREQUISITE: Auth folder step 3 (driver token). Powers the Figma 'Home' screen — pendingCount, activeCount, completedToday, and completedLast7Days (a day-by-day count used for the chart). NOTE: the exact chart metric in Figma couldn't be confirmed field-by-field — this returns 'deliveries completed per day' as the best available proxy without exact design data. Flag this if the real design tracks something else (e.g. earnings)."
+            "description": "PREREQUISITE: Driver token. Returns pendingTaskCount (pending + active) and completedTaskCount matching Figma Driver Homepage top card."
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Has pendingCount and activeCount', function () {",
-                  "    const data = pm.response.json().data;",
-                  "    pm.expect(data).to.have.property('pendingCount');",
-                  "    pm.expect(data).to.have.property('activeCount');",
-                  "});"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
-          "name": "7. Driver - Get My Deliveries",
+          "name": "2b. Open Map View (Pickup & Delivery Coordinates)",
           "request": {
             "method": "GET",
             "header": [
@@ -1253,35 +1325,46 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/deliveries/my?page=1&limit=20",
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/map",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "deliveries",
-                "my?page=1&limit=20"
+                "{{deliveryId}}",
+                "map"
               ]
             },
-            "description": "PREREQUISITE: '4. Assign Driver to Delivery'. Uses the driver's own accessToken."
+            "description": "PREREQUISITE: Driver token. Returns pickup/dropoff address, pickup/dropoff map coordinates ([lng, lat]), driver live location, and tracking token for the Open Map screen."
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('At least one delivery assigned', function () {",
-                  "    pm.expect(pm.response.json().data.length).to.be.greaterThan(0);",
-                  "});"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
-          "name": "8. Driver - Accept Delivery",
+          "name": "2. Driver My Deliveries List (Today's Tasks)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/my",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "my"
+              ]
+            },
+            "description": "PREREQUISITE: Driver token. Returns array of deliveries assigned to the logged-in driver."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Screen 1: Driver Accept Delivery ('Accept Request' Green Button)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1301,23 +1384,75 @@
                 "accept"
               ]
             },
-            "description": "PREREQUISITE: '4. Assign Driver to Delivery'. Only works from PENDING, only for the assigned driver."
+            "description": "PREREQUISITE: Driver token. Delivery status must be ASSIGNED. Moves status -> DRIVER_ACCEPTED (Screen 2: Assigned green dot)."
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
-          "name": "9. Driver - Mark Picked Up",
+          "name": "4. Screen 1: Driver Reject Delivery ('Reject Request' Red Button)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "reject"
+              ]
+            },
+            "description": "PREREQUISITE: Driver token. Delivery status must be ASSIGNED. Driver provides rejection reason. Moves status -> REJECTED and unassigns driver so admin can reassign.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Too far from current location\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5. Screen 2: Driver Arrive at Pickup ('Arrive at Pickup' Blue Button)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/driver-to-pickup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "driver-to-pickup"
+              ]
+            },
+            "description": "PREREQUISITE: Driver token. Moves status from DRIVER_ACCEPTED (or ASSIGNED) -> DRIVER_TO_PICKUP (Screen 3: At Pickup green dot)."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Screen 3: Driver Confirm Pickup ('Confirm Pickup' Blue Button)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1337,23 +1472,12 @@
                 "picked-up"
               ]
             },
-            "description": "PREREQUISITE: '8. Driver - Accept Delivery' (must be ACCEPTED first)."
+            "description": "PREREQUISITE: Driver token. Moves status from DRIVER_TO_PICKUP -> PICKED_UP."
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
-          "name": "10. Driver - Mark In Transit",
+          "name": "7. Screen 4: Driver Mark In Transit ('Arrived at Delivery' Blue Button)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1373,33 +1497,47 @@
                 "in-transit"
               ]
             },
-            "description": "PREREQUISITE: '9. Driver - Mark Picked Up' (must be PICKED_UP first)."
+            "description": "PREREQUISITE: Driver token. Moves status -> IN_TRANSIT (Screen 4: In Transit green dot)."
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
-          "name": "11. Driver - Update Location",
+          "name": "8. Screen 5: Driver Mark Out for Delivery ('Complete Delivery' Blue Button)",
           "request": {
             "method": "PATCH",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/{{deliveryId}}/out-for-delivery",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "{{deliveryId}}",
+                "out-for-delivery"
+              ]
+            },
+            "description": "PREREQUISITE: Driver token. Moves status -> OUT_FOR_DELIVERY (Screen 5: At Drop green dot)."
+          },
+          "response": []
+        },
+        {
+          "name": "9. Driver Update Live Location (Coordinates)",
+          "request": {
+            "method": "PATCH",
+            "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
             "url": {
@@ -1413,7 +1551,7 @@
                 "location"
               ]
             },
-            "description": "Works at any status; realistically called repeatedly while IN_TRANSIT. Plain REST/poll-based for now - see the testing guide's Socket.IO section for the future real-time version.",
+            "description": "PREREQUISITE: Driver token. Driver sends live GPS coordinates.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"lng\": -73.78,\n  \"lat\": 41.0375\n}",
@@ -1424,31 +1562,20 @@
               }
             }
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
-                ]
-              }
-            }
-          ]
+          "response": []
         },
         {
-          "name": "12. Driver - Submit Proof of Delivery",
+          "name": "10. Screen 6 & 7: Submit Proof of Delivery ('Submit' Green Button)",
           "request": {
             "method": "PATCH",
             "header": [
               {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
                 "key": "Authorization",
                 "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
             "url": {
@@ -1462,32 +1589,25 @@
                 "proof-of-delivery"
               ]
             },
-            "description": "PREREQUISITE: '10. Driver - Mark In Transit' (must be IN_TRANSIT). proofOfDeliveryImage is a URL for now (file upload is a future Uploads module). Completes the happy path.",
+            "description": "PREREQUISITE: Driver token. Submits proof photo and recipient name. Moves status -> DELIVERED (Screen 7: All 5 dots green & Job Completed).",
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"proofOfDeliveryImage\": \"https://example.com/proof-photos/sample.jpg\",\n  \"recipientName\": \"Alice Customer\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "recipientName",
+                  "value": "Jenny Wilson",
+                  "type": "text"
+                },
+                {
+                  "key": "proofOfDeliveryImage",
+                  "type": "file",
+                  "src": "",
+                  "description": "Proof of Delivery photo upload (File)"
                 }
-              }
+              ]
             }
           },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Status is now DELIVERED', function () {",
-                  "    pm.expect(pm.response.json().data.status).to.eql('DELIVERED');",
-                  "});"
-                ]
-              }
-            }
-          ]
+          "response": []
         }
       ]
     },
@@ -1520,7 +1640,7 @@
             "description": "A separate delivery from step 3 so reject/cancel testing doesn't disturb the completed DELIVERED order.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerName\": \"Bob Customer\",\n  \"customerPhone\": \"555-0199\",\n  \"pickupAddress\": \"300 Elm St, Yonkers, NY\",\n  \"dropoffAddress\": \"400 Oak Ave, New Rochelle, NY\"\n}",
+              "raw": "{\n  \"customerName\": \"Jane Smith\",\n  \"customerEmail\": \"jane.smith@example.com\",\n  \"customerPhone\": \"+19145550123\",\n  \"pickupContact\": \"Building Security / Gate 2\",\n  \"pickupAddress\": \"100 Main St, White Plains, NY\",\n  \"pickupDate\": \"2026-08-10T10:00:00.000Z\",\n  \"preferrablePickupTime\": \"10:00 AM - 12:00 PM\",\n  \"pickupNote\": \"Ring doorbell twice\",\n  \"pickupLng\": -73.76291,\n  \"pickupLat\": 41.03398,\n  \"receiverName\": \"Bob Johnson\",\n  \"receiverPhone\": \"+19145550999\",\n  \"dropoffAddress\": \"200 Mamaroneck Ave, White Plains, NY\",\n  \"preferrableDeliveryDate\": \"2026-08-10T14:00:00.000Z\",\n  \"deliveryNote\": \"Leave at front reception\",\n  \"dropoffLng\": -73.765,\n  \"dropoffLat\": 41.036,\n  \"title\": \"Document Package\",\n  \"parcelType\": \"Box\",\n  \"weight\": \"5 lbs\",\n  \"packageDescription\": \"Handle with care\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1841,8 +1961,45 @@
               }
             ],
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"driverId\": \"DL-987654\",\n  \"dateOfBirth\": \"1995-05-15\",\n  \"phoneNumber\": \"+19145550199\",\n  \"profileImage\": \"https://images.unsplash.com/photo-1534528741775-53994a69daeb\",\n  \"lat\": 41.03398,\n  \"lng\": -73.76291,\n  \"address\": \"123 Main St, White Plains, NY\"\n}"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "driverId",
+                  "value": "DL-987654",
+                  "type": "text"
+                },
+                {
+                  "key": "dateOfBirth",
+                  "value": "1995-05-15",
+                  "type": "text"
+                },
+                {
+                  "key": "phoneNumber",
+                  "value": "+19145550199",
+                  "type": "text"
+                },
+                {
+                  "key": "address",
+                  "value": "123 Main St, White Plains, NY",
+                  "type": "text"
+                },
+                {
+                  "key": "lat",
+                  "value": "41.03398",
+                  "type": "text"
+                },
+                {
+                  "key": "lng",
+                  "value": "-73.76291",
+                  "type": "text"
+                },
+                {
+                  "key": "profileImage",
+                  "type": "file",
+                  "src": "",
+                  "description": "Driver profile photo upload (File)"
+                }
+              ]
             },
             "url": {
               "raw": "{{baseUrl}}/profile/driver-setup",
@@ -1918,13 +2075,30 @@
             },
             "description": "All fields optional: name, phoneNumber, profileImage (a URL), address. Only fields you send are changed - everything else is left as-is.",
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"phoneNumber\": \"555-0142\",\n  \"address\": \"12 Elm St, Yonkers, NY\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Updated Driver Name",
+                  "type": "text"
+                },
+                {
+                  "key": "phoneNumber",
+                  "value": "+19145550199",
+                  "type": "text"
+                },
+                {
+                  "key": "address",
+                  "value": "456 Main St, White Plains, NY",
+                  "type": "text"
+                },
+                {
+                  "key": "profileImage",
+                  "type": "file",
+                  "src": "",
+                  "description": "User profile photo upload (File)"
                 }
-              }
+              ]
             }
           },
           "response": [],
@@ -2002,13 +2176,30 @@
             },
             "description": "Same endpoint, admin token - confirms the role-routing logic in ProfileService works both directions, not just for drivers.",
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Updated Admin Name\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Updated Driver Name",
+                  "type": "text"
+                },
+                {
+                  "key": "phoneNumber",
+                  "value": "+19145550199",
+                  "type": "text"
+                },
+                {
+                  "key": "address",
+                  "value": "456 Main St, White Plains, NY",
+                  "type": "text"
+                },
+                {
+                  "key": "profileImage",
+                  "type": "file",
+                  "src": "",
+                  "description": "User profile photo upload (File)"
                 }
-              }
+              ]
             }
           },
           "response": [],
@@ -2029,6 +2220,36 @@
     {
       "name": "Driver Management: Admin CRUD",
       "item": [
+        {
+          "name": "0. List New Driver Requests (Pending Approval - Figma Screen 3)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers?approvalStatus=PENDING",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "approvalStatus",
+                  "value": "PENDING"
+                }
+              ]
+            },
+            "description": "PREREQUISITE: Admin token. Backs the 'New Driver Request' screen when Admin clicks 'New request' button. Filters approvalStatus=PENDING."
+          },
+          "response": []
+        },
         {
           "name": "1. Create Driver A (assignable)",
           "request": {
@@ -3098,6 +3319,37 @@
     {
       "name": "Customer: Admin Read-Only",
       "item": [
+        {
+          "name": "0. Customer Suggestions for Create Order Auto-fill",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/customers/suggestions?q=Jane",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "customers",
+                "suggestions"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Jane"
+                }
+              ]
+            },
+            "description": "PREREQUISITE: Admin token. Returns previous customer info (name, email, phone, pickup/delivery details) for autocomplete auto-fill during order creation."
+          },
+          "response": []
+        },
         {
           "name": "1. List All Customers (admin)",
           "request": {
