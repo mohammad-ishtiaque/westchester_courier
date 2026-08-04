@@ -86,4 +86,58 @@ export class CustomerService {
       },
     };
   }
+
+  async getSuggestions(search?: string) {
+    const match: Record<string, unknown> = {};
+    if (search && search.trim()) {
+      match.$or = [
+        { customerName: { $regex: search.trim(), $options: 'i' } },
+        { customerPhone: { $regex: search.trim(), $options: 'i' } },
+      ];
+    }
+
+    const pipeline: any[] = [
+      { $match: match },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$customerPhone',
+          customerName: { $first: '$customerName' },
+          customerEmail: { $first: '$customerEmail' },
+          customerPhone: { $first: '$customerPhone' },
+          pickupContact: { $first: '$pickupContact' },
+          pickupAddress: { $first: '$pickupAddress' },
+          pickupNote: { $first: '$pickupNote' },
+          preferrablePickupTime: { $first: '$preferrablePickupTime' },
+          receiverName: { $first: '$receiverName' },
+          receiverPhone: { $first: '$receiverPhone' },
+          dropoffAddress: { $first: '$dropoffAddress' },
+          lastOrderAt: { $max: '$createdAt' },
+          totalOrders: { $sum: 1 },
+        },
+      },
+      { $sort: { lastOrderAt: -1 } },
+      { $limit: 10 },
+    ];
+
+    const results = await this.deliveryModel.aggregate(pipeline);
+
+    return {
+      message: 'Customer suggestions fetched successfully',
+      data: results.map((c: any) => ({
+        customerPhone: c.customerPhone || c._id,
+        customerName: c.customerName,
+        customerEmail: c.customerEmail,
+        pickupContact: c.pickupContact,
+        pickupAddress: c.pickupAddress,
+        pickupNote: c.pickupNote,
+        preferrablePickupTime: c.preferrablePickupTime,
+        receiverName: c.receiverName,
+        receiverPhone: c.receiverPhone,
+        dropoffAddress: c.dropoffAddress,
+        lastOrderAt: c.lastOrderAt,
+        totalOrders: c.totalOrders,
+      })),
+    };
+  }
 }

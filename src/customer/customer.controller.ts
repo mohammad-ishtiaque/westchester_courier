@@ -16,6 +16,11 @@ export class CustomerController {
     return this.customerService.findAll(query);
   }
 
+  @Get('suggestions')
+  getSuggestions(@Query('q') q?: string, @Query('search') search?: string) {
+    return this.customerService.getSuggestions(q || search);
+  }
+
   @Get(':phone')
   findOne(@Param('phone') phone: string) {
     return this.customerService.findOne(phone);
