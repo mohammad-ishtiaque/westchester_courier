@@ -4,38 +4,60 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { Types } from 'mongoose';
 import { DeliveryService } from './delivery.service';
 import { Delivery } from './schemas/delivery.schema';
+import { User } from '../user/schemas/user.schema';
 import { DeliveryStatus } from '../common/enums/delivery-status.enum';
 import { Role } from '../common/enums/role.enum';
 
 describe('DeliveryService', () => {
   let service: DeliveryService;
   let deliveryModel: any;
+  let userModel: any;
 
   const driverId = new Types.ObjectId().toHexString();
   const otherDriverId = new Types.ObjectId().toHexString();
   const adminUser = { authId: 'a1', userId: 'admin-1', email: 'admin@x.com', role: Role.ADMIN };
   const driverUser = { authId: 'd1', userId: driverId, email: 'driver@x.com', role: Role.DRIVER };
 
-  const mockDelivery = (overrides: Partial<any> = {}) => ({
-    _id: 'delivery-1',
-    orderNumber: 'WC-ABC123',
-    status: DeliveryStatus.PENDING,
-    assignedDriver: new Types.ObjectId(driverId),
-    save: jest.fn().mockResolvedValue(true),
+  const mockDelivery = (overrides: Partial<any> = {}) => {
+    const doc = {
+      _id: 'delivery-1',
+      orderNumber: 'WC-ABC123',
+      trackingToken: 'token123',
+      status: DeliveryStatus.PENDING,
+      assignedDriver: new Types.ObjectId(driverId),
+      save: jest.fn().mockResolvedValue(true),
+      ...overrides,
+    };
+    (doc as any).toObject = jest.fn().mockReturnValue({ ...doc });
+    return doc;
+  };
+
+  const mockUser = (overrides: Partial<any> = {}) => ({
+    _id: driverId,
+    name: 'John Driver',
+    isApproved: true,
+    approvalStatus: 'APPROVED',
     ...overrides,
   });
 
   beforeEach(async () => {
+    userModel = {
+      findById: jest.fn().mockResolvedValue(mockUser()),
+      findByIdAndUpdate: jest.fn().mockResolvedValue(mockUser()),
+    };
+
     const moduleRef = await Test.createTestingModule({
       providers: [
         DeliveryService,
         { provide: getModelToken(Delivery.name), useValue: {} },
+        { provide: getModelToken(User.name), useValue: userModel },
       ],
     }).compile();
 
     service = moduleRef.get(DeliveryService);
     deliveryModel = moduleRef.get(getModelToken(Delivery.name));
   });
+
 
   describe('create', () => {
     it('creates a PENDING delivery tagged with the creating admin', async () => {
@@ -98,8 +120,9 @@ describe('DeliveryService', () => {
       const doc = mockDelivery({ assignedDriver: new Types.ObjectId(otherDriverId) });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       const result = await service.findOne('delivery-1', adminUser as any);
-      expect(result.data).toBe(doc);
+      expect(result.data).toEqual(expect.objectContaining({ _id: 'delivery-1', trackingUrl: 'http://localhost:3000/track/token123' }));
     });
+
   });
 
   describe('status transition guards', () => {

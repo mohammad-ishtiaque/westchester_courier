@@ -20,6 +20,9 @@ export class Delivery {
   @Prop({ required: true, unique: true })
   orderNumber: string;
 
+  @Prop({ unique: true, sparse: true })
+  trackingToken?: string;
+
   @Prop({ required: true })
   customerName: string;
 

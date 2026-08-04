@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { randomBytes } from 'crypto';
 import { Delivery, DeliveryDocument } from './schemas/delivery.schema';
+import { User, UserDocument } from '../user/schemas/user.schema';
 import { DeliveryStatus } from '../common/enums/delivery-status.enum';
 import { TokenPayload } from '../common/interfaces/token-payload.interface';
 import { CreateDeliveryDto } from './dto/create-delivery.dto';
@@ -21,14 +23,22 @@ import { QueryDeliveryDto } from './dto/query-delivery.dto';
 export class DeliveryService {
   constructor(
     @InjectModel(Delivery.name) private readonly deliveryModel: Model<DeliveryDocument>,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
   ) {}
 
   private generateOrderNumber(): string {
-    // e.g. WC-8F3K21 — short, human-readable, good enough to read aloud over the phone.
-    // Collision risk is negligible for this volume; if it ever matters, switch to a
-    // DB-backed sequence counter instead of random.
     const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
     return `WC-${rand}`;
+  }
+
+  private generateTrackingToken(): string {
+    return randomBytes(16).toString('hex');
+  }
+
+  private formatTrackingUrl(token?: string): string | null {
+    if (!token) return null;
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return `${baseUrl}/track/${token}`;
   }
 
   private toGeoPoint(lng?: number, lat?: number) {
@@ -39,8 +49,10 @@ export class DeliveryService {
   // ---------- Admin ----------
 
   async create(admin: TokenPayload, dto: CreateDeliveryDto) {
+    const trackingToken = this.generateTrackingToken();
     const delivery = await this.deliveryModel.create({
       orderNumber: this.generateOrderNumber(),
+      trackingToken,
       customerName: dto.customerName,
       customerPhone: dto.customerPhone,
       pickupAddress: dto.pickupAddress,
@@ -52,7 +64,13 @@ export class DeliveryService {
       status: DeliveryStatus.PENDING,
     });
 
-    return { message: 'Delivery created successfully', data: delivery };
+    return {
+      message: 'Delivery created successfully',
+      data: {
+        ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(trackingToken),
+      },
+    };
   }
 
   async findAllForAdmin(query: QueryDeliveryDto) {
@@ -65,16 +83,21 @@ export class DeliveryService {
     const [items, total] = await Promise.all([
       this.deliveryModel
         .find(filter)
-        .populate('assignedDriver', 'name email phoneNumber')
+        .populate('assignedDriver', 'name email phoneNumber profile_image locationCoordinates')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
       this.deliveryModel.countDocuments(filter),
     ]);
 
+    const formattedItems = items.map((item) => ({
+      ...item.toObject(),
+      trackingUrl: this.formatTrackingUrl(item.trackingToken),
+    }));
+
     return {
       message: 'Deliveries fetched successfully',
-      data: items,
+      data: formattedItems,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -96,7 +119,13 @@ export class DeliveryService {
     if (dropoffGeo) delivery.dropoffCoordinates = dropoffGeo;
 
     await delivery.save();
-    return { message: 'Delivery updated successfully', data: delivery };
+    return {
+      message: 'Delivery updated successfully',
+      data: {
+        ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
+      },
+    };
   }
 
   async assignDriver(id: string, dto: AssignDriverDto) {
@@ -105,12 +134,24 @@ export class DeliveryService {
       throw new BadRequestException('Delivery is not in an assignable state');
     }
 
+    const driver = await this.userModel.findById(dto.driverId);
+    if (!driver) throw new NotFoundException('Driver not found');
+    if (!driver.isApproved) {
+      throw new BadRequestException('Cannot assign an unapproved driver to a delivery');
+    }
+
     delivery.assignedDriver = new Types.ObjectId(dto.driverId);
     delivery.status = DeliveryStatus.PENDING;
     delivery.rejectionReason = undefined;
     await delivery.save();
 
-    return { message: 'Driver assigned successfully', data: delivery };
+    return {
+      message: 'Driver assigned successfully',
+      data: {
+        ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
+      },
+    };
   }
 
   async cancel(id: string) {
@@ -141,22 +182,33 @@ export class DeliveryService {
       this.deliveryModel.countDocuments(filter),
     ]);
 
+    const formattedItems = items.map((item) => ({
+      ...item.toObject(),
+      trackingUrl: this.formatTrackingUrl(item.trackingToken),
+    }));
+
     return {
       message: 'Your deliveries fetched successfully',
-      data: items,
+      data: formattedItems,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
 
   async findOne(id: string, user: TokenPayload) {
     const delivery = await this.findByIdOrThrow(id);
-    this.assertOwnershipIfDriver(delivery, user);
-    return { message: 'Delivery fetched successfully', data: delivery };
+    await this.assertOwnershipIfDriver(delivery, user);
+    return {
+      message: 'Delivery fetched successfully',
+      data: {
+        ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
+      },
+    };
   }
 
   async accept(id: string, driver: TokenPayload) {
     const delivery = await this.findByIdOrThrow(id);
-    this.assertOwnershipIfDriver(delivery, driver);
+    await this.assertOwnershipIfDriver(delivery, driver);
     if (delivery.status !== DeliveryStatus.PENDING) {
       throw new BadRequestException('Only a PENDING delivery can be accepted');
     }
@@ -167,7 +219,7 @@ export class DeliveryService {
 
   async reject(id: string, driver: TokenPayload, dto: RejectDeliveryDto) {
     const delivery = await this.findByIdOrThrow(id);
-    this.assertOwnershipIfDriver(delivery, driver);
+    await this.assertOwnershipIfDriver(delivery, driver);
     if (delivery.status !== DeliveryStatus.PENDING) {
       throw new BadRequestException('Only a PENDING delivery can be rejected');
     }
@@ -180,7 +232,7 @@ export class DeliveryService {
 
   async markPickedUp(id: string, driver: TokenPayload) {
     const delivery = await this.findByIdOrThrow(id);
-    this.assertOwnershipIfDriver(delivery, driver);
+    await this.assertOwnershipIfDriver(delivery, driver);
     if (delivery.status !== DeliveryStatus.ACCEPTED) {
       throw new BadRequestException('Delivery must be ACCEPTED before it can be picked up');
     }
@@ -191,7 +243,7 @@ export class DeliveryService {
 
   async markInTransit(id: string, driver: TokenPayload) {
     const delivery = await this.findByIdOrThrow(id);
-    this.assertOwnershipIfDriver(delivery, driver);
+    await this.assertOwnershipIfDriver(delivery, driver);
     if (delivery.status !== DeliveryStatus.PICKED_UP) {
       throw new BadRequestException('Delivery must be PICKED_UP before it can be marked in transit');
     }
@@ -202,18 +254,23 @@ export class DeliveryService {
 
   async updateLocation(id: string, driver: TokenPayload, dto: UpdateLocationDto) {
     const delivery = await this.findByIdOrThrow(id);
-    this.assertOwnershipIfDriver(delivery, driver);
-    delivery.currentLocation = { type: 'Point', coordinates: [dto.lng, dto.lat] };
+    await this.assertOwnershipIfDriver(delivery, driver);
+    
+    const geoPoint = { type: 'Point', coordinates: [dto.lng, dto.lat] };
+    delivery.currentLocation = geoPoint;
     await delivery.save();
-    // NOTE: this is plain REST/poll-based for now. Once the real-time/Chat module exists,
-    // this is also where we'd emit a socket event (e.g. EnumSocketEvent.UPDATE_LOCATION in
-    // the reference template) so the admin Map screen updates live instead of on refresh.
-    return { message: 'Location updated' };
+
+    // Also update driver's current position in User document
+    await this.userModel.findByIdAndUpdate(driver.userId, {
+      locationCoordinates: geoPoint,
+    });
+
+    return { message: 'Location updated', data: { currentLocation: geoPoint } };
   }
 
   async submitProofOfDelivery(id: string, driver: TokenPayload, dto: ProofOfDeliveryDto) {
     const delivery = await this.findByIdOrThrow(id);
-    this.assertOwnershipIfDriver(delivery, driver);
+    await this.assertOwnershipIfDriver(delivery, driver);
     if (delivery.status !== DeliveryStatus.IN_TRANSIT) {
       throw new BadRequestException('Delivery must be IN_TRANSIT before proof of delivery can be submitted');
     }
@@ -225,14 +282,51 @@ export class DeliveryService {
     return { message: 'Delivery completed successfully', data: delivery };
   }
 
+  // ---------- Public Customer Live Tracking ----------
+
+  async getTrackingInfoByToken(tokenOrOrderNumber: string) {
+    const delivery = await this.deliveryModel
+      .findOne({
+        $or: [{ trackingToken: tokenOrOrderNumber }, { orderNumber: tokenOrOrderNumber }],
+      })
+      .populate('assignedDriver', 'name phoneNumber profile_image locationCoordinates');
+
+    if (!delivery) {
+      throw new NotFoundException('Delivery tracking information not found');
+    }
+
+    const driver: any = delivery.assignedDriver;
+    const trackingUrl = this.formatTrackingUrl(delivery.trackingToken);
+
+    return {
+      message: 'Live tracking details fetched successfully',
+      data: {
+        orderNumber: delivery.orderNumber,
+        status: delivery.status,
+        customerName: delivery.customerName,
+        customerPhone: delivery.customerPhone,
+        pickupAddress: delivery.pickupAddress,
+        pickupCoordinates: delivery.pickupCoordinates,
+        dropoffAddress: delivery.dropoffAddress,
+        dropoffCoordinates: delivery.dropoffCoordinates,
+        packageDescription: delivery.packageDescription,
+        currentLocation: delivery.currentLocation || driver?.locationCoordinates || null,
+        trackingToken: delivery.trackingToken,
+        trackingUrl,
+        driver: driver
+          ? {
+              name: driver.name,
+              phoneNumber: driver.phoneNumber,
+              profileImage: driver.profile_image,
+              locationCoordinates: driver.locationCoordinates,
+            }
+          : null,
+      },
+    };
+  }
+
   // ---------- shared ----------
 
-  // Powers the Figma "Home" screen (pending-task count + a completed-deliveries chart).
-  // NOTE: the exact chart metric shown in Figma couldn't be confirmed field-by-field (see
-  // project notes on Figma tooling limits for the admin/driver dashboards) — this returns
-  // "deliveries completed per day, last 7 days" as the best available proxy. Swap the
-  // metric here if the real design tracks something else (e.g. earnings, once a
-  // Payment/Earnings model exists).
   async getDriverStats(driver: TokenPayload) {
     const driverId = driver.userId;
 
@@ -277,10 +371,15 @@ export class DeliveryService {
     return delivery;
   }
 
-  private assertOwnershipIfDriver(delivery: DeliveryDocument, user: TokenPayload) {
+  private async assertOwnershipIfDriver(delivery: DeliveryDocument, user: TokenPayload) {
     if (user.role !== 'DRIVER') return; // admins/super-admins bypass ownership checks
     if (!delivery.assignedDriver || String(delivery.assignedDriver) !== user.userId) {
       throw new ForbiddenException('This delivery is not assigned to you');
     }
+    const driver = await this.userModel.findById(user.userId);
+    if (!driver || !driver.isApproved) {
+      throw new ForbiddenException('Your driver account is pending approval by an admin');
+    }
   }
 }
+

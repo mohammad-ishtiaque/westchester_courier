@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { DeliveryService } from './delivery.service';
 import { Roles } from '../common/decorators/roles.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import type { TokenPayload } from '../common/interfaces/token-payload.interface';
@@ -16,6 +17,14 @@ import { QueryDeliveryDto } from './dto/query-delivery.dto';
 export class DeliveryController {
   constructor(private readonly deliveryService: DeliveryService) {}
 
+  // ---------- Public Customer Tracking ----------
+
+  @Public()
+  @Get('track/:token')
+  trackDelivery(@Param('token') token: string) {
+    return this.deliveryService.getTrackingInfoByToken(token);
+  }
+
   // ---------- Admin ----------
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
@@ -23,6 +32,7 @@ export class DeliveryController {
   create(@CurrentUser() admin: TokenPayload, @Body() dto: CreateDeliveryDto) {
     return this.deliveryService.create(admin, dto);
   }
+
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @Get()
