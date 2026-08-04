@@ -48,8 +48,20 @@ export class ProfileController {
   }
 
   @Patch('me')
-  updateMe(@CurrentUser() user: TokenPayload, @Body() dto: UpdateProfileDto) {
-    return this.profileService.updateMe(user, dto);
+  @UseInterceptors(
+    FileInterceptor('profileImage', {
+      storage: buildDiskStorage('profile-images'),
+      fileFilter: imageFileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB cap
+    }),
+  )
+  updateMe(
+    @CurrentUser() user: TokenPayload,
+    @Body() dto: UpdateProfileDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    const profileImagePath = file ? file.path.replace(/\\/g, '/') : undefined;
+    return this.profileService.updateMe(user, dto, profileImagePath);
   }
 }
 

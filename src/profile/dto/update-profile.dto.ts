@@ -1,10 +1,8 @@
-import { IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 // Shared shape for both DRIVER/USER (User collection) and ADMIN/SUPER_ADMIN (Admin
-// collection) profiles — covers the fields both schemas have in common. Fields only
-// one side has (e.g. User.isOnline, User.locationCoordinates) are managed by their
-// own dedicated endpoints (isOnline by the Delivery/presence flow, location by
-// Delivery's updateLocation) rather than this general-purpose profile update.
+// collection) profiles.
 export class UpdateProfileDto {
   @IsOptional() @IsString()
   name?: string;
@@ -12,7 +10,7 @@ export class UpdateProfileDto {
   @IsOptional() @IsString()
   phoneNumber?: string;
 
-  @IsOptional() @IsUrl()
+  @IsOptional() @IsString()
   profileImage?: string;
 
   @IsOptional() @IsString()
@@ -25,9 +23,18 @@ export class UpdateProfileDto {
   dateOfBirth?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (value !== undefined && value !== null && value !== '' ? parseFloat(value) : undefined))
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
   lat?: number;
 
   @IsOptional()
+  @Transform(({ value }) => (value !== undefined && value !== null && value !== '' ? parseFloat(value) : undefined))
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
   lng?: number;
 }
+
 

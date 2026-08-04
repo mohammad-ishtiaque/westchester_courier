@@ -59,7 +59,7 @@ export class ProfileService {
   }
 
 
-  async updateMe(user: TokenPayload, dto: UpdateProfileDto) {
+  async updateMe(user: TokenPayload, dto: UpdateProfileDto, profileImagePath?: string) {
     const profile = this.isAdminRole(user.role)
       ? await this.adminModel.findById(user.userId)
       : await this.userModel.findById(user.userId);
@@ -68,7 +68,8 @@ export class ProfileService {
     if (dto.name != null) profile.name = dto.name;
     if (dto.phoneNumber != null) profile.phoneNumber = dto.phoneNumber;
     if (dto.address != null) profile.address = dto.address;
-    if (dto.profileImage != null) profile.profile_image = dto.profileImage;
+    if (profileImagePath != null) profile.profile_image = profileImagePath;
+    else if (dto.profileImage != null) profile.profile_image = dto.profileImage;
 
     if (!this.isAdminRole(user.role)) {
       const userProfile = profile as UserDocument;
