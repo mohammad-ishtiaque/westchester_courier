@@ -1,9 +1,11 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ProofOfDeliveryDto {
-  @IsString() @IsNotEmpty()
-  proofOfDeliveryImage: string; // URL — file upload handling comes with a future Uploads module
+  @IsOptional()
+  @IsString()
+  proofOfDeliveryImage?: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   recipientName: string;
 }
