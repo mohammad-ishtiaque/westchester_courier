@@ -17,4 +17,17 @@ export class UpdateProfileDto {
 
   @IsOptional() @IsString()
   address?: string;
+
+  @IsOptional() @IsString()
+  driverId?: string;
+
+  @IsOptional() @IsString()
+  dateOfBirth?: string;
+
+  @IsOptional()
+  lat?: number;
+
+  @IsOptional()
+  lng?: number;
 }
+
