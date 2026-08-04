@@ -160,7 +160,21 @@ export class AuthService {
       role: auth.role,
     });
 
-    return { message: 'Activation code verified successfully.', data: tokens };
+    const userProfile = profile as any;
+    return {
+      message: 'Activation code verified successfully.',
+      data: {
+        ...tokens,
+        user: {
+          id: profile._id,
+          email: auth.email,
+          role: auth.role,
+          isProfileCompleted: userProfile.isProfileCompleted ?? true,
+          isApproved: userProfile.isApproved ?? true,
+          approvalStatus: userProfile.approvalStatus ?? 'APPROVED',
+        },
+      },
+    };
   }
 
   async login(dto: LoginDto) {
@@ -184,8 +198,23 @@ export class AuthService {
       role: auth.role,
     });
 
-    return { message: 'Log in successful', data: tokens };
+    const userProfile = profile as any;
+    return {
+      message: 'Log in successful',
+      data: {
+        ...tokens,
+        user: {
+          id: profile._id,
+          email: auth.email,
+          role: auth.role,
+          isProfileCompleted: userProfile.isProfileCompleted ?? true,
+          isApproved: userProfile.isApproved ?? true,
+          approvalStatus: userProfile.approvalStatus ?? 'APPROVED',
+        },
+      },
+    };
   }
+
 
   async forgotPassword(dto: ForgotPasswordDto) {
     const auth = await this.authModel.findOne({ email: dto.email });

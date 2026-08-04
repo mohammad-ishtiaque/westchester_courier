@@ -24,14 +24,12 @@ import { RolesGuard } from '../common/guards/roles.guard';
   providers: [
     AuthService,
     // TEMP DEBUG: guards commented out
-    /*
     // Global guards: EVERY route in the app requires a valid JWT by default unless
     // marked @Public(). This is the opposite default from the template (where each
     // route opted IN to auth(...) individually) — safer as the app grows, since a
     // forgotten @Public() fails closed instead of a forgotten auth() failing open.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
-    */
   ],
   exports: [MongooseModule],
 })
