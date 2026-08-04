@@ -43,6 +43,7 @@ describe('DeliveryService', () => {
   beforeEach(async () => {
     userModel = {
       findById: jest.fn().mockResolvedValue(mockUser()),
+      findOne: jest.fn().mockResolvedValue(mockUser()),
       findByIdAndUpdate: jest.fn().mockResolvedValue(mockUser()),
     };
 
@@ -83,6 +84,7 @@ describe('DeliveryService', () => {
 
     it('assigns a driver to an UNASSIGNED delivery', async () => {
       const doc = mockDelivery({ status: DeliveryStatus.UNASSIGNED });
+      userModel.findOne = jest.fn().mockResolvedValue(mockUser({ _id: otherDriverId }));
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       await service.assignDriver('delivery-1', { driverId: otherDriverId });
       expect(String(doc.assignedDriver)).toBe(otherDriverId);
@@ -127,11 +129,31 @@ describe('DeliveryService', () => {
 
     it('lets an admin bypass ownership checks entirely', async () => {
       const doc = mockDelivery({ assignedDriver: new Types.ObjectId(otherDriverId) });
-      deliveryModel.findById = jest.fn().mockResolvedValue(doc);
+      deliveryModel.findById = jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(doc),
+      });
       const result = await service.findOne('delivery-1', adminUser as any);
       expect(result.data).toEqual(expect.objectContaining({ _id: 'delivery-1', trackingUrl: 'http://localhost:3000/track/token123' }));
     });
 
+    it('returns map details for assigned delivery', async () => {
+      const doc = mockDelivery({
+        assignedDriver: new Types.ObjectId(driverId),
+        pickupCoordinates: { type: 'Point', coordinates: [-73.76, 41.03] },
+        dropoffCoordinates: { type: 'Point', coordinates: [-73.77, 41.04] },
+      });
+      deliveryModel.findById = jest.fn().mockResolvedValue(doc);
+      userModel.findById = jest.fn().mockResolvedValue(mockUser());
+
+      const result = await service.getMapDetails('delivery-1', driverUser as any);
+      expect(result.data).toEqual(
+        expect.objectContaining({
+          _id: 'delivery-1',
+          pickupCoordinates: { type: 'Point', coordinates: [-73.76, 41.03] },
+          dropoffCoordinates: { type: 'Point', coordinates: [-73.77, 41.04] },
+        }),
+      );
+    });
   });
 
   describe('status transition guards', () => {
@@ -174,6 +196,13 @@ describe('DeliveryService', () => {
       expect(doc.assignedDriver).toBeNull();
       expect(doc.rejectionReason).toBe('Too far');
     });
+
+    it('updateStatus delegates driver status changes to appropriate handlers', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.ASSIGNED });
+      deliveryModel.findById = jest.fn().mockResolvedValue(doc);
+      await service.updateStatus('delivery-1', driverUser as any, { status: DeliveryStatus.DRIVER_ACCEPTED });
+      expect(doc.status).toBe(DeliveryStatus.DRIVER_ACCEPTED);
+    });
   });
 
   describe('updateLocation', () => {
@@ -189,8 +218,9 @@ describe('DeliveryService', () => {
     it('aggregates pending/active/completed counts for the requesting driver only', async () => {
       deliveryModel.countDocuments = jest
         .fn()
-        .mockResolvedValueOnce(3) // pending
+        .mockResolvedValueOnce(3) // pending (ASSIGNED)
         .mockResolvedValueOnce(2) // active (accepted/picked-up/in-transit)
+        .mockResolvedValueOnce(10) // total completed
         .mockResolvedValueOnce(1); // completed today
       deliveryModel.aggregate = jest.fn().mockResolvedValue([
         { _id: '2026-07-10', count: 2 },
@@ -199,6 +229,8 @@ describe('DeliveryService', () => {
 
       const result = await service.getDriverStats(driverUser as any);
 
+      expect(result.data.pendingTaskCount).toBe(5);
+      expect(result.data.completedTaskCount).toBe(10);
       expect(result.data.pendingCount).toBe(3);
       expect(result.data.activeCount).toBe(2);
       expect(result.data.completedToday).toBe(1);

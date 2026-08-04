@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import { Delivery, DeliveryDocument } from './schemas/delivery.schema';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { DeliveryStatus } from '../common/enums/delivery-status.enum';
+import { Role } from '../common/enums/role.enum';
 import { TokenPayload } from '../common/interfaces/token-payload.interface';
 import { CreateDeliveryDto } from './dto/create-delivery.dto';
 import { UpdateDeliveryDto } from './dto/update-delivery.dto';
@@ -18,6 +19,7 @@ import { RejectDeliveryDto } from './dto/reject-delivery.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { QueryDeliveryDto } from './dto/query-delivery.dto';
+import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
 
 @Injectable()
 export class DeliveryService {
@@ -54,12 +56,12 @@ export class DeliveryService {
     let assignedDriverId: Types.ObjectId | null = null;
 
     if (dto.driverId) {
-      const driver = await this.userModel.findById(dto.driverId);
+      const driver = await this.userModel.findOne(this.getDriverQuery(dto.driverId));
       if (!driver) throw new NotFoundException('Driver not found');
       if (!driver.isApproved) {
         throw new BadRequestException('Cannot assign an unapproved driver to a delivery');
       }
-      assignedDriverId = new Types.ObjectId(dto.driverId);
+      assignedDriverId = driver._id;
       initialStatus = DeliveryStatus.ASSIGNED;
     }
 
@@ -185,13 +187,13 @@ export class DeliveryService {
       throw new BadRequestException('Cannot assign driver once delivery has been accepted or is in progress');
     }
 
-    const driver = await this.userModel.findById(dto.driverId);
+    const driver = await this.userModel.findOne(this.getDriverQuery(dto.driverId));
     if (!driver) throw new NotFoundException('Driver not found');
     if (!driver.isApproved) {
       throw new BadRequestException('Cannot assign an unapproved driver to a delivery');
     }
 
-    delivery.assignedDriver = new Types.ObjectId(dto.driverId);
+    delivery.assignedDriver = driver._id;
     delivery.status = DeliveryStatus.ASSIGNED;
     delivery.rejectionReason = undefined;
     await delivery.save();
@@ -248,10 +250,51 @@ export class DeliveryService {
     return { message: 'Delivery cancelled successfully' };
   }
 
+  async updateStatus(id: string, user: TokenPayload, dto: UpdateDeliveryStatusDto) {
+    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
+      const delivery = await this.findByIdOrThrow(id);
+      delivery.status = dto.status;
+      if (dto.reason) delivery.rejectionReason = dto.reason;
+      await delivery.save();
+      return {
+        message: `Delivery status updated to ${dto.status} by admin`,
+        data: delivery,
+      };
+    }
+
+    switch (dto.status) {
+      case DeliveryStatus.DRIVER_ACCEPTED:
+        return this.accept(id, user);
+      case DeliveryStatus.REJECTED:
+        return this.reject(id, user, { reason: dto.reason });
+      case DeliveryStatus.DRIVER_TO_PICKUP:
+        return this.markDriverToPickup(id, user);
+      case DeliveryStatus.PICKED_UP:
+        return this.markPickedUp(id, user);
+      case DeliveryStatus.IN_TRANSIT:
+        return this.markInTransit(id, user);
+      case DeliveryStatus.OUT_FOR_DELIVERY:
+        return this.markOutForDelivery(id, user);
+      case DeliveryStatus.DELIVERED:
+        if (!dto.proofOfDeliveryImage || !dto.recipientName) {
+          throw new BadRequestException(
+            'proofOfDeliveryImage and recipientName are required for DELIVERED status',
+          );
+        }
+        return this.submitProofOfDelivery(id, user, {
+          proofOfDeliveryImage: dto.proofOfDeliveryImage,
+          recipientName: dto.recipientName,
+        });
+      default:
+        throw new BadRequestException(`Drivers cannot set delivery status to ${dto.status}`);
+    }
+  }
+
   // ---------- Driver ----------
 
   async findMine(driver: TokenPayload, query: QueryDeliveryDto) {
-    const filter: Record<string, unknown> = { assignedDriver: driver.userId };
+    const driverIds = this.getDriverIdsList(driver);
+    const filter: Record<string, unknown> = { assignedDriver: { $in: driverIds } };
     if (query.status) filter.status = query.status;
 
     const page = query.page ?? 1;
@@ -266,10 +309,25 @@ export class DeliveryService {
       this.deliveryModel.countDocuments(filter),
     ]);
 
-    const formattedItems = items.map((item) => ({
-      ...item.toObject(),
-      trackingUrl: this.formatTrackingUrl(item.trackingToken),
-    }));
+    const formattedItems = items.map((item) => {
+      const obj = item.toObject() as any;
+      return {
+        _id: obj._id,
+        orderNumber: obj.orderNumber,
+        status: obj.status,
+        customerName: obj.customerName,
+        customerPhone: obj.customerPhone,
+        pickupAddress: obj.pickupAddress,
+        preferrablePickupTime: obj.preferrablePickupTime,
+        pickupDate: obj.pickupDate,
+        receiverName: obj.receiverName,
+        receiverPhone: obj.receiverPhone,
+        dropoffAddress: obj.dropoffAddress,
+        preferrableDeliveryDate: obj.preferrableDeliveryDate,
+        createdAt: obj.createdAt,
+        trackingUrl: this.formatTrackingUrl(item.trackingToken),
+      };
+    });
 
     return {
       message: 'Your deliveries fetched successfully',
@@ -279,12 +337,40 @@ export class DeliveryService {
   }
 
   async findOne(id: string, user: TokenPayload) {
-    const delivery = await this.findByIdOrThrow(id);
+    const delivery = await this.deliveryModel
+      .findById(id)
+      .populate('assignedDriver', 'name email phoneNumber profile_image locationCoordinates');
+    if (!delivery) throw new NotFoundException('Delivery not found');
     await this.assertOwnershipIfDriver(delivery, user);
     return {
       message: 'Delivery fetched successfully',
       data: {
         ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
+      },
+    };
+  }
+
+  async getMapDetails(id: string, user: TokenPayload) {
+    const delivery = await this.findByIdOrThrow(id);
+    await this.assertOwnershipIfDriver(delivery, user);
+
+    const driver = delivery.assignedDriver
+      ? await this.userModel.findById(delivery.assignedDriver)
+      : null;
+
+    return {
+      message: 'Delivery map details fetched successfully',
+      data: {
+        _id: delivery._id,
+        orderNumber: delivery.orderNumber,
+        status: delivery.status,
+        pickupAddress: delivery.pickupAddress,
+        pickupCoordinates: delivery.pickupCoordinates || null,
+        dropoffAddress: delivery.dropoffAddress,
+        dropoffCoordinates: delivery.dropoffCoordinates || null,
+        driverCurrentLocation: delivery.currentLocation || driver?.locationCoordinates || null,
+        trackingToken: delivery.trackingToken,
         trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
       },
     };
@@ -317,8 +403,11 @@ export class DeliveryService {
   async markDriverToPickup(id: string, driver: TokenPayload) {
     const delivery = await this.findByIdOrThrow(id);
     await this.assertOwnershipIfDriver(delivery, driver);
-    if (delivery.status !== DeliveryStatus.DRIVER_ACCEPTED) {
-      throw new BadRequestException('Delivery must be DRIVER_ACCEPTED before driver moves to pickup');
+    if (
+      delivery.status !== DeliveryStatus.ASSIGNED &&
+      delivery.status !== DeliveryStatus.DRIVER_ACCEPTED
+    ) {
+      throw new BadRequestException('Delivery must be ASSIGNED or DRIVER_ACCEPTED before driver moves to pickup');
     }
     delivery.status = DeliveryStatus.DRIVER_TO_PICKUP;
     await delivery.save();
@@ -329,10 +418,11 @@ export class DeliveryService {
     const delivery = await this.findByIdOrThrow(id);
     await this.assertOwnershipIfDriver(delivery, driver);
     if (
+      delivery.status !== DeliveryStatus.ASSIGNED &&
       delivery.status !== DeliveryStatus.DRIVER_ACCEPTED &&
       delivery.status !== DeliveryStatus.DRIVER_TO_PICKUP
     ) {
-      throw new BadRequestException('Delivery must be in DRIVER_ACCEPTED or DRIVER_TO_PICKUP state before pickup');
+      throw new BadRequestException('Delivery must be in ASSIGNED, DRIVER_ACCEPTED, or DRIVER_TO_PICKUP state before pickup');
     }
     delivery.status = DeliveryStatus.PICKED_UP;
     await delivery.save();
@@ -450,13 +540,41 @@ export class DeliveryService {
 
   // ---------- shared ----------
 
-  async getDriverStats(driver: TokenPayload) {
-    const driverId = driver.userId;
+  private getDriverQuery(dtoDriverId: string) {
+    const isObjId = Types.ObjectId.isValid(dtoDriverId);
+    return {
+      $or: [
+        ...(isObjId ? [{ _id: new Types.ObjectId(dtoDriverId) }, { authId: new Types.ObjectId(dtoDriverId) }] : []),
+        { _id: dtoDriverId },
+        { authId: dtoDriverId },
+      ],
+    };
+  }
 
-    const [pendingCount, acceptedOrInTransitCount, completedToday, last7Days] = await Promise.all([
-      this.deliveryModel.countDocuments({ assignedDriver: driverId, status: DeliveryStatus.ASSIGNED }),
+  private getDriverIdsList(driver: TokenPayload) {
+    const list: any[] = [];
+    if (driver.userId) {
+      list.push(driver.userId);
+      if (Types.ObjectId.isValid(driver.userId)) list.push(new Types.ObjectId(driver.userId));
+    }
+    if (driver.authId) {
+      list.push(driver.authId);
+      if (Types.ObjectId.isValid(driver.authId)) list.push(new Types.ObjectId(driver.authId));
+    }
+    return list;
+  }
+
+  async getDriverStats(driver: TokenPayload) {
+    const driverIds = this.getDriverIdsList(driver);
+    const driverMatch = { $in: driverIds };
+    const aggregateDriverObjectIds = driverIds
+      .filter((id) => id instanceof Types.ObjectId || Types.ObjectId.isValid(id))
+      .map((id) => (typeof id === 'string' ? new Types.ObjectId(id) : id));
+
+    const [pendingCount, acceptedOrInTransitCount, totalCompletedCount, completedToday, last7Days] = await Promise.all([
+      this.deliveryModel.countDocuments({ assignedDriver: driverMatch, status: DeliveryStatus.ASSIGNED }),
       this.deliveryModel.countDocuments({
-        assignedDriver: driverId,
+        assignedDriver: driverMatch,
         status: {
           $in: [
             DeliveryStatus.DRIVER_ACCEPTED,
@@ -468,14 +586,18 @@ export class DeliveryService {
         },
       }),
       this.deliveryModel.countDocuments({
-        assignedDriver: driverId,
+        assignedDriver: driverMatch,
+        status: DeliveryStatus.DELIVERED,
+      }),
+      this.deliveryModel.countDocuments({
+        assignedDriver: driverMatch,
         status: DeliveryStatus.DELIVERED,
         deliveredAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
       }),
       this.deliveryModel.aggregate([
         {
           $match: {
-            assignedDriver: new Types.ObjectId(driverId),
+            assignedDriver: { $in: aggregateDriverObjectIds },
             status: DeliveryStatus.DELIVERED,
             deliveredAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
           },
@@ -488,6 +610,8 @@ export class DeliveryService {
     return {
       message: 'Driver stats fetched successfully',
       data: {
+        pendingTaskCount: pendingCount + acceptedOrInTransitCount,
+        completedTaskCount: totalCompletedCount,
         pendingCount,
         activeCount: acceptedOrInTransitCount,
         completedToday,
@@ -503,11 +627,20 @@ export class DeliveryService {
   }
 
   private async assertOwnershipIfDriver(delivery: DeliveryDocument, user: TokenPayload) {
-    if (user.role !== 'DRIVER') return; // admins/super-admins bypass ownership checks
-    if (!delivery.assignedDriver || String(delivery.assignedDriver) !== user.userId) {
+    if (user.role !== Role.DRIVER && user.role !== Role.ADMIN && user.role !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException('Invalid role');
+    }
+    if (user.role !== Role.DRIVER) return; // admins/super-admins bypass ownership checks
+
+    const assignedStr = delivery.assignedDriver
+      ? String((delivery.assignedDriver as any)._id || delivery.assignedDriver)
+      : null;
+
+    if (!assignedStr || (assignedStr !== user.userId && assignedStr !== user.authId)) {
       throw new ForbiddenException('This delivery is not assigned to you');
     }
-    const driver = await this.userModel.findById(user.userId);
+
+    const driver = await this.userModel.findOne(this.getDriverQuery(user.userId));
     if (!driver || !driver.isApproved) {
       throw new ForbiddenException('Your driver account is pending approval by an admin');
     }

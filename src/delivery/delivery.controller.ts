@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { DeliveryService } from './delivery.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
@@ -12,6 +13,8 @@ import { RejectDeliveryDto } from './dto/reject-delivery.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { QueryDeliveryDto } from './dto/query-delivery.dto';
+import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
+import { buildDiskStorage, imageFileFilter } from '../common/utils/upload.util';
 
 @Controller('deliveries')
 export class DeliveryController {
@@ -58,10 +61,26 @@ export class DeliveryController {
     return this.deliveryService.removeDriver(id);
   }
 
-  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.DRIVER)
   @Patch(':id/status')
-  changeStatus(@Param('id') id: string, @Body('status') status: any) {
-    return this.deliveryService.changeStatus(id, status);
+  @UseInterceptors(
+    FileInterceptor('proofOfDeliveryImage', {
+      storage: buildDiskStorage('proof-of-delivery'),
+      fileFilter: imageFileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  updateStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: TokenPayload,
+    @Body() dto: UpdateDeliveryStatusDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    const imagePath = file ? file.path.replace(/\\/g, '/') : dto.proofOfDeliveryImage;
+    return this.deliveryService.updateStatus(id, user, {
+      ...dto,
+      proofOfDeliveryImage: imagePath,
+    });
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
@@ -82,6 +101,12 @@ export class DeliveryController {
   @Get('my')
   findMine(@CurrentUser() driver: TokenPayload, @Query() query: QueryDeliveryDto) {
     return this.deliveryService.findMine(driver, query);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.DRIVER)
+  @Get(':id/map')
+  getMapDetails(@Param('id') id: string, @CurrentUser() user: TokenPayload) {
+    return this.deliveryService.getMapDetails(id, user);
   }
 
   @Get(':id')
@@ -141,11 +166,23 @@ export class DeliveryController {
 
   @Roles(Role.DRIVER)
   @Patch(':id/proof-of-delivery')
+  @UseInterceptors(
+    FileInterceptor('proofOfDeliveryImage', {
+      storage: buildDiskStorage('proof-of-delivery'),
+      fileFilter: imageFileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
   submitProofOfDelivery(
     @Param('id') id: string,
     @CurrentUser() driver: TokenPayload,
     @Body() dto: ProofOfDeliveryDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.deliveryService.submitProofOfDelivery(id, driver, dto);
+    const imagePath = file ? file.path.replace(/\\/g, '/') : dto.proofOfDeliveryImage;
+    return this.deliveryService.submitProofOfDelivery(id, driver, {
+      ...dto,
+      proofOfDeliveryImage: imagePath,
+    });
   }
 }
