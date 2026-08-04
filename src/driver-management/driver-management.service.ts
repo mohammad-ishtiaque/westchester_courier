@@ -36,6 +36,9 @@ export class DriverManagementService {
       name: dto.name,
       email: dto.email,
       phoneNumber: dto.phoneNumber,
+      isProfileCompleted: true,
+      isApproved: true,
+      approvalStatus: 'APPROVED',
     });
 
     return { message: 'Driver added successfully', data: driver };
@@ -53,7 +56,13 @@ export class DriverManagementService {
       ];
     }
 
+    const userMatch: Record<string, unknown> = {};
+    if (query.approvalStatus) {
+      userMatch.approvalStatus = query.approvalStatus.toUpperCase();
+    }
+
     const pipeline = [
+      { $match: userMatch },
       {
         $lookup: {
           from: 'auths',
@@ -77,6 +86,13 @@ export class DriverManagementService {
                 phoneNumber: 1,
                 address: 1,
                 profile_image: 1,
+                driverId: 1,
+                dateOfBirth: 1,
+                isProfileCompleted: 1,
+                isApproved: 1,
+                approvalStatus: 1,
+                rejectionReason: 1,
+                locationCoordinates: 1,
                 isOnline: 1,
                 assignedVehicle: 1,
                 createdAt: 1,
@@ -116,6 +132,30 @@ export class DriverManagementService {
     return { message: 'Driver updated successfully', data: driver };
   }
 
+  async approveDriver(id: string) {
+    const driver = await this.userModel.findById(id);
+    if (!driver) throw new NotFoundException('Driver not found');
+
+    driver.isApproved = true;
+    driver.approvalStatus = 'APPROVED';
+    driver.rejectionReason = undefined;
+    await driver.save();
+
+    return { message: 'Driver registration approved successfully', data: driver };
+  }
+
+  async rejectDriver(id: string, reason?: string) {
+    const driver = await this.userModel.findById(id);
+    if (!driver) throw new NotFoundException('Driver not found');
+
+    driver.isApproved = false;
+    driver.approvalStatus = 'REJECTED';
+    if (reason) driver.rejectionReason = reason;
+    await driver.save();
+
+    return { message: 'Driver registration rejected', data: driver };
+  }
+
   async setBlocked(id: string, blocked: boolean) {
     const driver = await this.userModel.findById(id);
     if (!driver) throw new NotFoundException('Driver not found');
@@ -137,3 +177,4 @@ export class DriverManagementService {
     return { message: 'Driver removed successfully' };
   }
 }
+

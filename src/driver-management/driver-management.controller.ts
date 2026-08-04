@@ -33,6 +33,16 @@ export class DriverManagementController {
     return this.driverManagementService.update(id, dto);
   }
 
+  @Patch(':id/approve')
+  approve(@Param('id') id: string) {
+    return this.driverManagementService.approveDriver(id);
+  }
+
+  @Patch(':id/reject')
+  reject(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.driverManagementService.rejectDriver(id, reason);
+  }
+
   @Patch(':id/block')
   block(@Param('id') id: string) {
     return this.driverManagementService.setBlocked(id, true);
@@ -42,6 +52,7 @@ export class DriverManagementController {
   unblock(@Param('id') id: string) {
     return this.driverManagementService.setBlocked(id, false);
   }
+
 
   @Delete(':id')
   remove(@Param('id') id: string) {

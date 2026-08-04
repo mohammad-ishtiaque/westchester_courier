@@ -3,6 +3,8 @@ import { Type } from 'class-transformer';
 
 export class QueryDriverDto {
   @IsOptional() @IsString() search?: string; // matches against name/email, case-insensitive
+  @IsOptional() @IsString() approvalStatus?: string; // PENDING, APPROVED, REJECTED
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) limit?: number = 20;
 }
+
