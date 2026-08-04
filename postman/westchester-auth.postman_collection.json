@@ -1176,6 +1176,25 @@
               }
             }
           ]
+        },
+        {
+          "name": "Customer Live Tracking Link (public - no auth)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/deliveries/track/{{trackingToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "deliveries",
+                "track",
+                "{{trackingToken}}"
+              ]
+            },
+            "description": "Public unauthenticated endpoint used when customers open the shareable live tracking link. Returns order status, pickup/dropoff coordinates, current driver live location, driver name, photo, and phone number."
+          }
         }
       ]
     },
@@ -1203,7 +1222,7 @@
                 "summary"
               ]
             },
-            "description": "PREREQUISITE: Auth folder step 3 (driver token). Powers the Figma 'Home' screen \u2014 pendingCount, activeCount, completedToday, and completedLast7Days (a day-by-day count used for the chart). NOTE: the exact chart metric in Figma couldn't be confirmed field-by-field \u2014 this returns 'deliveries completed per day' as the best available proxy without exact design data. Flag this if the real design tracks something else (e.g. earnings)."
+            "description": "PREREQUISITE: Auth folder step 3 (driver token). Powers the Figma 'Home' screen — pendingCount, activeCount, completedToday, and completedLast7Days (a day-by-day count used for the chart). NOTE: the exact chart metric in Figma couldn't be confirmed field-by-field — this returns 'deliveries completed per day' as the best available proxy without exact design data. Flag this if the real design tracks something else (e.g. earnings)."
           },
           "response": [],
           "event": [
@@ -1805,6 +1824,39 @@
     {
       "name": "Profile: Settings (driver + admin)",
       "item": [
+        {
+          "name": "Driver Setup Profile (post-email-verification)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"DL-987654\",\n  \"dateOfBirth\": \"1995-05-15\",\n  \"phoneNumber\": \"+19145550199\",\n  \"profileImage\": \"https://images.unsplash.com/photo-1534528741775-53994a69daeb\",\n  \"lat\": 41.03398,\n  \"lng\": -73.76291,\n  \"address\": \"123 Main St, White Plains, NY\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/profile/driver-setup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profile",
+                "driver-setup"
+              ]
+            },
+            "description": "Submitted by a driver right after email verification to complete onboarding. Captures Driver ID, DOB, phone, photo, and initial lat/lng location. Sets isProfileCompleted=true and approvalStatus=PENDING awaiting Admin approval."
+          }
+        },
         {
           "name": "1. Driver - Get My Profile",
           "request": {
@@ -2441,6 +2493,67 @@
               }
             }
           ]
+        },
+        {
+          "name": "Approve Driver Registration (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{createdDriverId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{createdDriverId}}",
+                "approve"
+              ]
+            },
+            "description": "Admin accepts/approves a driver who has completed profile setup. Sets isApproved=true and approvalStatus=APPROVED, allowing the driver to accept deliveries."
+          }
+        },
+        {
+          "name": "Reject Driver Registration (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Incomplete background check documents\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{createdDriverId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{createdDriverId}}",
+                "reject"
+              ]
+            },
+            "description": "Admin rejects a pending driver registration with an optional rejection reason."
+          }
         }
       ]
     },
