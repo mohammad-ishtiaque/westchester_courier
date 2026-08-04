@@ -53,14 +53,24 @@ export class DeliveryController {
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Patch(':id/remove-driver')
+  removeDriver(@Param('id') id: string) {
+    return this.deliveryService.removeDriver(id);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Patch(':id/status')
+  changeStatus(@Param('id') id: string, @Body('status') status: any) {
+    return this.deliveryService.changeStatus(id, status);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @Patch(':id/cancel')
   cancel(@Param('id') id: string) {
     return this.deliveryService.cancel(id);
   }
 
   // ---------- Driver ----------
-  // NOTE: route order matters here — 'my' and 'stats/summary' must be declared before
-  // ':id' or Nest will try to match them as an :id param on GET /deliveries/:id instead.
 
   @Roles(Role.DRIVER)
   @Get('stats/summary')
@@ -96,6 +106,12 @@ export class DeliveryController {
   }
 
   @Roles(Role.DRIVER)
+  @Patch(':id/driver-to-pickup')
+  markDriverToPickup(@Param('id') id: string, @CurrentUser() driver: TokenPayload) {
+    return this.deliveryService.markDriverToPickup(id, driver);
+  }
+
+  @Roles(Role.DRIVER)
   @Patch(':id/picked-up')
   markPickedUp(@Param('id') id: string, @CurrentUser() driver: TokenPayload) {
     return this.deliveryService.markPickedUp(id, driver);
@@ -105,6 +121,12 @@ export class DeliveryController {
   @Patch(':id/in-transit')
   markInTransit(@Param('id') id: string, @CurrentUser() driver: TokenPayload) {
     return this.deliveryService.markInTransit(id, driver);
+  }
+
+  @Roles(Role.DRIVER)
+  @Patch(':id/out-for-delivery')
+  markOutForDelivery(@Param('id') id: string, @CurrentUser() driver: TokenPayload) {
+    return this.deliveryService.markOutForDelivery(id, driver);
   }
 
   @Roles(Role.DRIVER)

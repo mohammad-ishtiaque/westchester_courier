@@ -5,11 +5,15 @@
 // directly — renaming this enum's values is a one-line change, nothing depends on
 // the string values except what's stored in the DB already.
 export enum DeliveryStatus {
-  PENDING = 'PENDING',       // created, not yet accepted by a driver
-  ACCEPTED = 'ACCEPTED',     // driver accepted, not yet picked up
-  REJECTED = 'REJECTED',     // driver rejected — goes back to PENDING for reassignment
-  PICKED_UP = 'PICKED_UP',   // driver has the package
-  IN_TRANSIT = 'IN_TRANSIT', // en route to dropoff
-  DELIVERED = 'DELIVERED',   // completed, proof of delivery attached
-  CANCELLED = 'CANCELLED',   // cancelled by admin/customer before delivery
+  UNASSIGNED = 'UNASSIGNED',             // created by admin, no driver assigned yet
+  ASSIGNED = 'ASSIGNED',                 // admin assigned driver, awaiting driver acceptance
+  DRIVER_ACCEPTED = 'DRIVER_ACCEPTED',   // driver accepted the delivery order
+  DRIVER_TO_PICKUP = 'DRIVER_TO_PICKUP', // driver en route to pickup address
+  PICKED_UP = 'PICKED_UP',               // driver picked up package from sender
+  IN_TRANSIT = 'IN_TRANSIT',             // driver en route to delivery address
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY', // driver out for final delivery leg
+  DELIVERED = 'DELIVERED',               // package delivered, proof attached
+  REJECTED = 'REJECTED',                 // driver rejected — available for reassignment
+  CANCELLED = 'CANCELLED',               // cancelled by admin
 }
+

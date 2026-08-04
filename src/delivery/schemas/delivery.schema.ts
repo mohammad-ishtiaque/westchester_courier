@@ -23,20 +23,59 @@ export class Delivery {
   @Prop({ unique: true, sparse: true })
   trackingToken?: string;
 
+  @Prop()
+  title?: string;
+
+  @Prop()
+  parcelType?: string;
+
+  @Prop()
+  weight?: string;
+
+  // --- Customer Information ---
   @Prop({ required: true })
   customerName: string;
+
+  @Prop()
+  customerEmail?: string;
 
   @Prop({ required: true })
   customerPhone: string;
 
+  // --- Pickup Details ---
+  @Prop()
+  pickupContact?: string;
+
   @Prop({ required: true })
   pickupAddress: string;
+
+  @Prop()
+  pickupDate?: Date;
+
+  @Prop()
+  preferrablePickupTime?: string;
+
+  @Prop()
+  pickupNote?: string;
 
   @Prop({ type: GeoPoint })
   pickupCoordinates?: GeoPoint;
 
+  // --- Delivery / Receiver Details ---
+  @Prop({ required: true })
+  receiverName: string;
+
+  @Prop({ required: true })
+  receiverPhone: string;
+
   @Prop({ required: true })
   dropoffAddress: string;
+
+  @Prop()
+  preferrableDeliveryDate?: Date;
+
+  @Prop()
+  deliveryNote?: string;
 
   @Prop({ type: GeoPoint })
   dropoffCoordinates?: GeoPoint;
@@ -44,28 +83,22 @@ export class Delivery {
   @Prop()
   packageDescription?: string;
 
-  @Prop({ type: String, enum: DeliveryStatus, default: DeliveryStatus.PENDING })
+  @Prop({ type: String, enum: DeliveryStatus, default: DeliveryStatus.UNASSIGNED })
   status: DeliveryStatus;
 
-  // The Driver's User document (role: DRIVER) — null until an admin assigns it or a
-  // driver claims it. Ref'd as 'User' since that's where Driver profiles live (see
-  // AuthService.findProfile — DRIVER role routes to the User collection).
+  // The Driver's User document (role: DRIVER) — null until an admin assigns it.
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
   assignedDriver?: Types.ObjectId | null;
 
   @Prop({ type: Types.ObjectId, ref: 'Admin', required: true })
   createdBy: Types.ObjectId;
 
-  // Updated by the driver app while a delivery is IN_TRANSIT — this is what the
-  // admin Map screen and driver Map/tracking screens both read.
   @Prop({ type: GeoPoint })
   currentLocation?: GeoPoint;
 
   @Prop()
   rejectionReason?: string;
 
-  // Proof of Delivery — matches the Figma "Proof of Delivery" screen (photo + recipient
-  // name), populated only once, when status transitions to DELIVERED.
   @Prop()
   proofOfDeliveryImage?: string;
 

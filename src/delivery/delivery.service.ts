@@ -50,18 +50,48 @@ export class DeliveryService {
 
   async create(admin: TokenPayload, dto: CreateDeliveryDto) {
     const trackingToken = this.generateTrackingToken();
+    let initialStatus = DeliveryStatus.UNASSIGNED;
+    let assignedDriverId: Types.ObjectId | null = null;
+
+    if (dto.driverId) {
+      const driver = await this.userModel.findById(dto.driverId);
+      if (!driver) throw new NotFoundException('Driver not found');
+      if (!driver.isApproved) {
+        throw new BadRequestException('Cannot assign an unapproved driver to a delivery');
+      }
+      assignedDriverId = new Types.ObjectId(dto.driverId);
+      initialStatus = DeliveryStatus.ASSIGNED;
+    }
+
     const delivery = await this.deliveryModel.create({
       orderNumber: this.generateOrderNumber(),
       trackingToken,
+      title: dto.title,
+      parcelType: dto.parcelType,
+      weight: dto.weight,
+
       customerName: dto.customerName,
+      customerEmail: dto.customerEmail,
       customerPhone: dto.customerPhone,
+
+      pickupContact: dto.pickupContact,
       pickupAddress: dto.pickupAddress,
+      pickupDate: dto.pickupDate ? new Date(dto.pickupDate) : undefined,
+      preferrablePickupTime: dto.preferrablePickupTime,
+      pickupNote: dto.pickupNote,
       pickupCoordinates: this.toGeoPoint(dto.pickupLng, dto.pickupLat),
+
+      receiverName: dto.receiverName || dto.customerName,
+      receiverPhone: dto.receiverPhone || dto.customerPhone,
       dropoffAddress: dto.dropoffAddress,
+      preferrableDeliveryDate: dto.preferrableDeliveryDate ? new Date(dto.preferrableDeliveryDate) : undefined,
+      deliveryNote: dto.deliveryNote,
       dropoffCoordinates: this.toGeoPoint(dto.dropoffLng, dto.dropoffLat),
+
       packageDescription: dto.packageDescription,
       createdBy: admin.userId,
-      status: DeliveryStatus.PENDING,
+      assignedDriver: assignedDriverId,
+      status: initialStatus,
     });
 
     return {
@@ -104,15 +134,32 @@ export class DeliveryService {
 
   async update(id: string, dto: UpdateDeliveryDto) {
     const delivery = await this.findByIdOrThrow(id);
-    if (delivery.status !== DeliveryStatus.PENDING) {
-      throw new BadRequestException('Only a PENDING delivery can be edited');
+    if (delivery.status !== DeliveryStatus.UNASSIGNED && delivery.status !== DeliveryStatus.ASSIGNED) {
+      throw new BadRequestException('Only UNASSIGNED or ASSIGNED deliveries can be edited by admin');
     }
 
+    if (dto.title != null) delivery.title = dto.title;
+    if (dto.parcelType != null) delivery.parcelType = dto.parcelType;
+    if (dto.weight != null) delivery.weight = dto.weight;
+
     if (dto.customerName != null) delivery.customerName = dto.customerName;
+    if (dto.customerEmail != null) delivery.customerEmail = dto.customerEmail;
     if (dto.customerPhone != null) delivery.customerPhone = dto.customerPhone;
+
+    if (dto.pickupContact != null) delivery.pickupContact = dto.pickupContact;
     if (dto.pickupAddress != null) delivery.pickupAddress = dto.pickupAddress;
+    if (dto.pickupDate != null) delivery.pickupDate = new Date(dto.pickupDate);
+    if (dto.preferrablePickupTime != null) delivery.preferrablePickupTime = dto.preferrablePickupTime;
+    if (dto.pickupNote != null) delivery.pickupNote = dto.pickupNote;
+
+    if (dto.receiverName != null) delivery.receiverName = dto.receiverName;
+    if (dto.receiverPhone != null) delivery.receiverPhone = dto.receiverPhone;
     if (dto.dropoffAddress != null) delivery.dropoffAddress = dto.dropoffAddress;
+    if (dto.preferrableDeliveryDate != null) delivery.preferrableDeliveryDate = new Date(dto.preferrableDeliveryDate);
+    if (dto.deliveryNote != null) delivery.deliveryNote = dto.deliveryNote;
+
     if (dto.packageDescription != null) delivery.packageDescription = dto.packageDescription;
+
     const pickupGeo = this.toGeoPoint(dto.pickupLng, dto.pickupLat);
     if (pickupGeo) delivery.pickupCoordinates = pickupGeo;
     const dropoffGeo = this.toGeoPoint(dto.dropoffLng, dto.dropoffLat);
@@ -130,8 +177,12 @@ export class DeliveryService {
 
   async assignDriver(id: string, dto: AssignDriverDto) {
     const delivery = await this.findByIdOrThrow(id);
-    if (delivery.status !== DeliveryStatus.PENDING && delivery.status !== DeliveryStatus.REJECTED) {
-      throw new BadRequestException('Delivery is not in an assignable state');
+    if (
+      delivery.status !== DeliveryStatus.UNASSIGNED &&
+      delivery.status !== DeliveryStatus.ASSIGNED &&
+      delivery.status !== DeliveryStatus.REJECTED
+    ) {
+      throw new BadRequestException('Cannot assign driver once delivery has been accepted or is in progress');
     }
 
     const driver = await this.userModel.findById(dto.driverId);
@@ -141,12 +192,45 @@ export class DeliveryService {
     }
 
     delivery.assignedDriver = new Types.ObjectId(dto.driverId);
-    delivery.status = DeliveryStatus.PENDING;
+    delivery.status = DeliveryStatus.ASSIGNED;
     delivery.rejectionReason = undefined;
     await delivery.save();
 
     return {
       message: 'Driver assigned successfully',
+      data: {
+        ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
+      },
+    };
+  }
+
+  async removeDriver(id: string) {
+    const delivery = await this.findByIdOrThrow(id);
+    if (delivery.status !== DeliveryStatus.ASSIGNED) {
+      throw new BadRequestException('Can only remove driver before the driver accepts the delivery');
+    }
+
+    delivery.assignedDriver = null;
+    delivery.status = DeliveryStatus.UNASSIGNED;
+    await delivery.save();
+
+    return {
+      message: 'Driver removed successfully',
+      data: {
+        ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
+      },
+    };
+  }
+
+  async changeStatus(id: string, status: DeliveryStatus) {
+    const delivery = await this.findByIdOrThrow(id);
+    delivery.status = status;
+    await delivery.save();
+
+    return {
+      message: `Delivery status updated to ${status}`,
       data: {
         ...delivery.toObject(),
         trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
@@ -209,32 +293,46 @@ export class DeliveryService {
   async accept(id: string, driver: TokenPayload) {
     const delivery = await this.findByIdOrThrow(id);
     await this.assertOwnershipIfDriver(delivery, driver);
-    if (delivery.status !== DeliveryStatus.PENDING) {
-      throw new BadRequestException('Only a PENDING delivery can be accepted');
+    if (delivery.status !== DeliveryStatus.ASSIGNED && delivery.status !== DeliveryStatus.UNASSIGNED) {
+      throw new BadRequestException('Only an ASSIGNED delivery can be accepted');
     }
-    delivery.status = DeliveryStatus.ACCEPTED;
+    delivery.status = DeliveryStatus.DRIVER_ACCEPTED;
     await delivery.save();
-    return { message: 'Delivery accepted', data: delivery };
+    return { message: 'Delivery accepted by driver', data: delivery };
   }
 
   async reject(id: string, driver: TokenPayload, dto: RejectDeliveryDto) {
     const delivery = await this.findByIdOrThrow(id);
     await this.assertOwnershipIfDriver(delivery, driver);
-    if (delivery.status !== DeliveryStatus.PENDING) {
-      throw new BadRequestException('Only a PENDING delivery can be rejected');
+    if (delivery.status !== DeliveryStatus.ASSIGNED) {
+      throw new BadRequestException('Only an ASSIGNED delivery can be rejected');
     }
     delivery.status = DeliveryStatus.REJECTED;
     delivery.rejectionReason = dto.reason;
     delivery.assignedDriver = null;
     await delivery.save();
-    return { message: 'Delivery rejected', data: delivery };
+    return { message: 'Delivery rejected by driver', data: delivery };
+  }
+
+  async markDriverToPickup(id: string, driver: TokenPayload) {
+    const delivery = await this.findByIdOrThrow(id);
+    await this.assertOwnershipIfDriver(delivery, driver);
+    if (delivery.status !== DeliveryStatus.DRIVER_ACCEPTED) {
+      throw new BadRequestException('Delivery must be DRIVER_ACCEPTED before driver moves to pickup');
+    }
+    delivery.status = DeliveryStatus.DRIVER_TO_PICKUP;
+    await delivery.save();
+    return { message: 'Driver heading to pickup location', data: delivery };
   }
 
   async markPickedUp(id: string, driver: TokenPayload) {
     const delivery = await this.findByIdOrThrow(id);
     await this.assertOwnershipIfDriver(delivery, driver);
-    if (delivery.status !== DeliveryStatus.ACCEPTED) {
-      throw new BadRequestException('Delivery must be ACCEPTED before it can be picked up');
+    if (
+      delivery.status !== DeliveryStatus.DRIVER_ACCEPTED &&
+      delivery.status !== DeliveryStatus.DRIVER_TO_PICKUP
+    ) {
+      throw new BadRequestException('Delivery must be in DRIVER_ACCEPTED or DRIVER_TO_PICKUP state before pickup');
     }
     delivery.status = DeliveryStatus.PICKED_UP;
     await delivery.save();
@@ -252,6 +350,17 @@ export class DeliveryService {
     return { message: 'Marked as in transit', data: delivery };
   }
 
+  async markOutForDelivery(id: string, driver: TokenPayload) {
+    const delivery = await this.findByIdOrThrow(id);
+    await this.assertOwnershipIfDriver(delivery, driver);
+    if (delivery.status !== DeliveryStatus.IN_TRANSIT) {
+      throw new BadRequestException('Delivery must be IN_TRANSIT before it can be marked out for delivery');
+    }
+    delivery.status = DeliveryStatus.OUT_FOR_DELIVERY;
+    await delivery.save();
+    return { message: 'Marked as out for delivery', data: delivery };
+  }
+
   async updateLocation(id: string, driver: TokenPayload, dto: UpdateLocationDto) {
     const delivery = await this.findByIdOrThrow(id);
     await this.assertOwnershipIfDriver(delivery, driver);
@@ -260,7 +369,6 @@ export class DeliveryService {
     delivery.currentLocation = geoPoint;
     await delivery.save();
 
-    // Also update driver's current position in User document
     await this.userModel.findByIdAndUpdate(driver.userId, {
       locationCoordinates: geoPoint,
     });
@@ -271,8 +379,11 @@ export class DeliveryService {
   async submitProofOfDelivery(id: string, driver: TokenPayload, dto: ProofOfDeliveryDto) {
     const delivery = await this.findByIdOrThrow(id);
     await this.assertOwnershipIfDriver(delivery, driver);
-    if (delivery.status !== DeliveryStatus.IN_TRANSIT) {
-      throw new BadRequestException('Delivery must be IN_TRANSIT before proof of delivery can be submitted');
+    if (
+      delivery.status !== DeliveryStatus.IN_TRANSIT &&
+      delivery.status !== DeliveryStatus.OUT_FOR_DELIVERY
+    ) {
+      throw new BadRequestException('Delivery must be IN_TRANSIT or OUT_FOR_DELIVERY before proof of delivery can be submitted');
     }
     delivery.status = DeliveryStatus.DELIVERED;
     delivery.proofOfDeliveryImage = dto.proofOfDeliveryImage;
@@ -303,11 +414,23 @@ export class DeliveryService {
       data: {
         orderNumber: delivery.orderNumber,
         status: delivery.status,
+        title: delivery.title,
+        parcelType: delivery.parcelType,
+        weight: delivery.weight,
         customerName: delivery.customerName,
+        customerEmail: delivery.customerEmail,
         customerPhone: delivery.customerPhone,
+        pickupContact: delivery.pickupContact,
         pickupAddress: delivery.pickupAddress,
+        pickupDate: delivery.pickupDate,
+        preferrablePickupTime: delivery.preferrablePickupTime,
+        pickupNote: delivery.pickupNote,
         pickupCoordinates: delivery.pickupCoordinates,
+        receiverName: delivery.receiverName,
+        receiverPhone: delivery.receiverPhone,
         dropoffAddress: delivery.dropoffAddress,
+        preferrableDeliveryDate: delivery.preferrableDeliveryDate,
+        deliveryNote: delivery.deliveryNote,
         dropoffCoordinates: delivery.dropoffCoordinates,
         packageDescription: delivery.packageDescription,
         currentLocation: delivery.currentLocation || driver?.locationCoordinates || null,
@@ -331,10 +454,18 @@ export class DeliveryService {
     const driverId = driver.userId;
 
     const [pendingCount, acceptedOrInTransitCount, completedToday, last7Days] = await Promise.all([
-      this.deliveryModel.countDocuments({ assignedDriver: driverId, status: DeliveryStatus.PENDING }),
+      this.deliveryModel.countDocuments({ assignedDriver: driverId, status: DeliveryStatus.ASSIGNED }),
       this.deliveryModel.countDocuments({
         assignedDriver: driverId,
-        status: { $in: [DeliveryStatus.ACCEPTED, DeliveryStatus.PICKED_UP, DeliveryStatus.IN_TRANSIT] },
+        status: {
+          $in: [
+            DeliveryStatus.DRIVER_ACCEPTED,
+            DeliveryStatus.DRIVER_TO_PICKUP,
+            DeliveryStatus.PICKED_UP,
+            DeliveryStatus.IN_TRANSIT,
+            DeliveryStatus.OUT_FOR_DELIVERY,
+          ],
+        },
       }),
       this.deliveryModel.countDocuments({
         assignedDriver: driverId,

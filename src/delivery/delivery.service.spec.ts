@@ -60,8 +60,8 @@ describe('DeliveryService', () => {
 
 
   describe('create', () => {
-    it('creates a PENDING delivery tagged with the creating admin', async () => {
-      deliveryModel.create = jest.fn().mockResolvedValue(mockDelivery());
+    it('creates an UNASSIGNED delivery tagged with the creating admin', async () => {
+      deliveryModel.create = jest.fn().mockResolvedValue(mockDelivery({ status: DeliveryStatus.UNASSIGNED }));
       const result = await service.create(adminUser as any, {
         customerName: 'Jane',
         customerPhone: '555-0100',
@@ -69,24 +69,33 @@ describe('DeliveryService', () => {
         dropoffAddress: '2 Main St',
       });
       expect(deliveryModel.create).toHaveBeenCalledWith(
-        expect.objectContaining({ createdBy: 'admin-1', status: DeliveryStatus.PENDING }),
+        expect.objectContaining({ createdBy: 'admin-1', status: DeliveryStatus.UNASSIGNED }),
       );
       expect(result.data).toBeDefined();
     });
   });
 
-  describe('assignDriver', () => {
+  describe('assignDriver & removeDriver', () => {
     it('rejects assigning a driver to a delivery already in transit', async () => {
       deliveryModel.findById = jest.fn().mockResolvedValue(mockDelivery({ status: DeliveryStatus.IN_TRANSIT }));
       await expect(service.assignDriver('delivery-1', { driverId })).rejects.toThrow(BadRequestException);
     });
 
-    it('assigns a driver to a PENDING delivery', async () => {
-      const doc = mockDelivery();
+    it('assigns a driver to an UNASSIGNED delivery', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.UNASSIGNED });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       await service.assignDriver('delivery-1', { driverId: otherDriverId });
       expect(String(doc.assignedDriver)).toBe(otherDriverId);
+      expect(doc.status).toBe(DeliveryStatus.ASSIGNED);
       expect(doc.save).toHaveBeenCalled();
+    });
+
+    it('removes assigned driver before driver accepts', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.ASSIGNED, assignedDriver: new Types.ObjectId(otherDriverId) });
+      deliveryModel.findById = jest.fn().mockResolvedValue(doc);
+      await service.removeDriver('delivery-1');
+      expect(doc.assignedDriver).toBeNull();
+      expect(doc.status).toBe(DeliveryStatus.UNASSIGNED);
     });
   });
 
@@ -96,8 +105,8 @@ describe('DeliveryService', () => {
       await expect(service.cancel('delivery-1')).rejects.toThrow(BadRequestException);
     });
 
-    it('cancels a PENDING order', async () => {
-      const doc = mockDelivery();
+    it('cancels an UNASSIGNED order', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.UNASSIGNED });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       await service.cancel('delivery-1');
       expect(doc.status).toBe(DeliveryStatus.CANCELLED);
@@ -126,26 +135,27 @@ describe('DeliveryService', () => {
   });
 
   describe('status transition guards', () => {
-    it('accept only works from PENDING', async () => {
-      const doc = mockDelivery({ status: DeliveryStatus.ACCEPTED });
+    it('accept only works from ASSIGNED', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.DRIVER_ACCEPTED });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       await expect(service.accept('delivery-1', driverUser as any)).rejects.toThrow(BadRequestException);
     });
 
-    it('markPickedUp only works from ACCEPTED', async () => {
-      const doc = mockDelivery({ status: DeliveryStatus.PENDING });
+    it('markPickedUp works from DRIVER_ACCEPTED or DRIVER_TO_PICKUP', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.DRIVER_ACCEPTED });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
-      await expect(service.markPickedUp('delivery-1', driverUser as any)).rejects.toThrow(BadRequestException);
+      await service.markPickedUp('delivery-1', driverUser as any);
+      expect(doc.status).toBe(DeliveryStatus.PICKED_UP);
     });
 
     it('markInTransit only works from PICKED_UP', async () => {
-      const doc = mockDelivery({ status: DeliveryStatus.ACCEPTED });
+      const doc = mockDelivery({ status: DeliveryStatus.DRIVER_ACCEPTED });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       await expect(service.markInTransit('delivery-1', driverUser as any)).rejects.toThrow(BadRequestException);
     });
 
-    it('submitProofOfDelivery only works from IN_TRANSIT, and completes the order', async () => {
-      const doc = mockDelivery({ status: DeliveryStatus.IN_TRANSIT });
+    it('submitProofOfDelivery works from OUT_FOR_DELIVERY, and completes the order', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.OUT_FOR_DELIVERY });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       const result = await service.submitProofOfDelivery('delivery-1', driverUser as any, {
         proofOfDeliveryImage: 'https://example.com/proof.jpg',
@@ -156,8 +166,8 @@ describe('DeliveryService', () => {
       expect(result.data).toBe(doc);
     });
 
-    it('reject only works from PENDING and clears the driver assignment', async () => {
-      const doc = mockDelivery({ status: DeliveryStatus.PENDING });
+    it('reject only works from ASSIGNED and clears the driver assignment', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.ASSIGNED });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       await service.reject('delivery-1', driverUser as any, { reason: 'Too far' });
       expect(doc.status).toBe(DeliveryStatus.REJECTED);
