@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Auth, AuthDocument } from '../auth/schemas/auth.schema';
 import { User, UserDocument } from '../user/schemas/user.schema';
+import { Delivery, DeliveryDocument } from '../delivery/schemas/delivery.schema';
+import { DeliveryStatus } from '../common/enums/delivery-status.enum';
 import { Role } from '../common/enums/role.enum';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
@@ -13,6 +15,7 @@ export class DriverManagementService {
   constructor(
     @InjectModel(Auth.name) private readonly authModel: Model<AuthDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Delivery.name) private readonly deliveryModel: Model<DeliveryDocument>,
   ) {}
 
   // Admin-initiated — the account is created already active (isActive: true), since an
@@ -48,11 +51,15 @@ export class DriverManagementService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const authMatch: Record<string, unknown> = { role: Role.DRIVER };
+    const authMatch: Record<string, unknown> = { 'auth.role': Role.DRIVER };
     if (query.search) {
+      const searchRegex = { $regex: query.search.trim(), $options: 'i' };
       authMatch.$or = [
-        { name: { $regex: query.search, $options: 'i' } },
-        { email: { $regex: query.search, $options: 'i' } },
+        { name: searchRegex },
+        { email: searchRegex },
+        { phoneNumber: searchRegex },
+        { 'auth.name': searchRegex },
+        { 'auth.email': searchRegex },
       ];
     }
 
@@ -120,9 +127,18 @@ export class DriverManagementService {
     const driver = await this.userModel.findById(id);
     if (!driver) throw new NotFoundException('Driver not found');
     const auth = await this.authModel.findById(driver.authId);
+    const totalCompletedDeliveries = await this.deliveryModel.countDocuments({
+      assignedDriver: driver._id,
+      status: DeliveryStatus.DELIVERED,
+    });
     return {
       message: 'Driver fetched successfully',
-      data: { ...driver.toObject(), isActive: auth?.isActive, isBlocked: auth?.isBlocked },
+      data: {
+        ...driver.toObject(),
+        isActive: auth?.isActive ?? false,
+        isBlocked: auth?.isBlocked ?? false,
+        totalCompletedDeliveries,
+      },
     };
   }
 

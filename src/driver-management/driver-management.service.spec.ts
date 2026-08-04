@@ -5,12 +5,14 @@ import { Types } from 'mongoose';
 import { DriverManagementService } from './driver-management.service';
 import { Auth } from '../auth/schemas/auth.schema';
 import { User } from '../user/schemas/user.schema';
+import { Delivery } from '../delivery/schemas/delivery.schema';
 import { Role } from '../common/enums/role.enum';
 
 describe('DriverManagementService', () => {
   let service: DriverManagementService;
   let authModel: any;
   let userModel: any;
+  let deliveryModel: any;
 
   const driverId = new Types.ObjectId().toHexString();
   const authId = new Types.ObjectId().toHexString();
@@ -33,13 +35,15 @@ describe('DriverManagementService', () => {
       providers: [
         DriverManagementService,
         { provide: getModelToken(Auth.name), useValue: {} },
-        { provide: getModelToken(User.name), useValue: {} },
+        { provide: getModelToken(User.name), useValue: { findById: jest.fn() } },
+        { provide: getModelToken(Delivery.name), useValue: { countDocuments: jest.fn().mockResolvedValue(121) } },
       ],
     }).compile();
 
     service = moduleRef.get(DriverManagementService);
     authModel = moduleRef.get(getModelToken(Auth.name));
     userModel = moduleRef.get(getModelToken(User.name));
+    deliveryModel = moduleRef.get(getModelToken(Delivery.name));
   });
 
   describe('create', () => {
@@ -71,13 +75,14 @@ describe('DriverManagementService', () => {
       await expect(service.findOne(driverId)).rejects.toThrow(NotFoundException);
     });
 
-    it('merges isActive/isBlocked from the linked Auth doc', async () => {
+    it('merges isActive/isBlocked and returns totalCompletedDeliveries', async () => {
       userModel.findById = jest.fn().mockResolvedValue(mockDriver());
       authModel.findById = jest.fn().mockResolvedValue({ isActive: true, isBlocked: false });
 
       const result = await service.findOne(driverId);
       expect(result.data.isActive).toBe(true);
       expect(result.data.isBlocked).toBe(false);
+      expect(result.data.totalCompletedDeliveries).toBe(121);
     });
   });
 
