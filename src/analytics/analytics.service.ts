@@ -20,17 +20,28 @@ export class AnalyticsService {
   ) {}
 
   async getOverview() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const [facetResult] = await this.deliveryModel.aggregate([
       {
         $facet: {
           byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
           total: [{ $count: 'count' }],
-          distinctCustomers: [{ $group: { _id: '$customerPhone' } }, { $count: 'count' }],
+          todayTotal: [
+            { $match: { createdAt: { $gte: today } } },
+            { $count: 'count' }
+          ],
+          todayCompleted: [
+            { $match: { createdAt: { $gte: today }, status: DeliveryStatus.DELIVERED } },
+            { $count: 'count' }
+          ]
         },
       },
     ]);
 
-    const totalDeliveries = facetResult.total[0]?.count ?? 0;
+    const totalOrder = facetResult.total[0]?.count ?? 0;
+    
     const deliveriesByStatus: Record<string, number> = Object.values(DeliveryStatus).reduce(
       (acc, status) => ({ ...acc, [status]: 0 }),
       {},
@@ -38,26 +49,41 @@ export class AnalyticsService {
     for (const row of facetResult.byStatus) {
       deliveriesByStatus[row._id] = row.count;
     }
-    const delivered = deliveriesByStatus[DeliveryStatus.DELIVERED] ?? 0;
-    const completionRate = totalDeliveries ? Number(((delivered / totalDeliveries) * 100).toFixed(1)) : 0;
-    const totalCustomers = facetResult.distinctCustomers[0]?.count ?? 0;
 
-    // Every doc in the User collection is a Driver profile (Admins live in their own
-    // collection — see AuthService's role routing), so a plain count is correct here.
-    const [totalDrivers, totalVehicles] = await Promise.all([
-      this.userModel.countDocuments({}),
-      this.vehicleModel.countDocuments({}),
-    ]);
+    const totalCompletedOrder = deliveriesByStatus[DeliveryStatus.DELIVERED] ?? 0;
+    const canceledOrder = deliveriesByStatus[DeliveryStatus.CANCELLED] ?? 0;
+    const activeOrder = totalOrder - totalCompletedOrder - canceledOrder;
+
+    const totalDriver = await this.userModel.countDocuments({});
+
+    const todaysStatus = {
+      orders: facetResult.todayTotal[0]?.count ?? 0,
+      completed: facetResult.todayCompleted[0]?.count ?? 0,
+    };
+
+    const recentDeliveries = await this.deliveryModel
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('assignedDriver', 'name');
+
+    const recentReports = recentDeliveries.map(d => ({
+      _id: d._id,
+      orderNumber: d.orderNumber,
+      driverName: (d.assignedDriver as any)?.name ?? 'Unassigned'
+    }));
 
     return {
       message: 'Analytics overview fetched successfully',
       data: {
-        totalDeliveries,
-        deliveriesByStatus,
-        completionRate,
-        totalDrivers,
-        totalVehicles,
-        totalCustomers,
+        cards: {
+          totalOrder,
+          totalCompletedOrder,
+          activeOrder,
+          totalDriver
+        },
+        todaysStatus,
+        recentReports
       },
     };
   }
@@ -73,22 +99,22 @@ export class AnalyticsService {
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-          totalOrders: { $sum: 1 },
-          deliveredOrders: { $sum: { $cond: [{ $eq: ['$status', DeliveryStatus.DELIVERED] }, 1, 0] } },
+          completedOrders: { $sum: { $cond: [{ $eq: ['$status', DeliveryStatus.DELIVERED] }, 1, 0] } },
+          canceledOrders: { $sum: { $cond: [{ $eq: ['$status', DeliveryStatus.CANCELLED] }, 1, 0] } },
         },
       },
     ]);
     const byDate = new Map(rows.map((r) => [r._id, r]));
 
-    const series: Array<{ date: string; totalOrders: number; deliveredOrders: number }> = [];
+    const series: Array<{ date: string; completedOrders: number; canceledOrders: number }> = [];
     for (let i = 0; i < days; i++) {
       const d = new Date(since);
       d.setDate(d.getDate() + i);
       const key = d.toISOString().slice(0, 10);
       const row = byDate.get(key);
-      series.push({ date: key, totalOrders: row?.totalOrders ?? 0, deliveredOrders: row?.deliveredOrders ?? 0 });
+      series.push({ date: key, completedOrders: row?.completedOrders ?? 0, canceledOrders: row?.canceledOrders ?? 0 });
     }
 
-    return { message: 'Analytics chart data fetched successfully', data: series };
+    return { message: 'Analytics chart data fetched successfully', data: series.reverse() };
   }
 }

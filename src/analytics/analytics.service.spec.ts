@@ -37,32 +37,47 @@ describe('AnalyticsService', () => {
             { _id: DeliveryStatus.PENDING, count: 1 },
           ],
           total: [{ count: 4 }],
-          distinctCustomers: [{ count: 2 }],
+          todayTotal: [{ count: 1 }],
+          todayCompleted: [{ count: 0 }],
         },
       ]);
       userModel.countDocuments = jest.fn().mockResolvedValue(5);
-      vehicleModel.countDocuments = jest.fn().mockResolvedValue(2);
+      deliveryModel.find = jest.fn().mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue([
+              { _id: '1', orderNumber: '123', assignedDriver: { name: 'John' } }
+            ])
+          })
+        })
+      });
 
       const result = await service.getOverview();
 
-      expect(result.data.totalDeliveries).toBe(4);
-      expect(result.data.completionRate).toBe(75);
-      expect(result.data.deliveriesByStatus[DeliveryStatus.DELIVERED]).toBe(3);
-      expect(result.data.totalDrivers).toBe(5);
-      expect(result.data.totalVehicles).toBe(2);
-      expect(result.data.totalCustomers).toBe(2);
+      expect(result.data.cards.totalOrder).toBe(4);
+      expect(result.data.cards.totalCompletedOrder).toBe(3);
+      expect(result.data.cards.activeOrder).toBe(1);
+      expect(result.data.cards.totalDriver).toBe(5);
+      expect(result.data.todaysStatus.orders).toBe(1);
+      expect(result.data.recentReports).toHaveLength(1);
     });
 
-    it('returns a zero completion rate when there are no deliveries yet', async () => {
+    it('returns zeroes when there are no deliveries yet', async () => {
       deliveryModel.aggregate = jest.fn().mockResolvedValue([
-        { byStatus: [], total: [], distinctCustomers: [] },
+        { byStatus: [], total: [], todayTotal: [], todayCompleted: [] },
       ]);
       userModel.countDocuments = jest.fn().mockResolvedValue(0);
-      vehicleModel.countDocuments = jest.fn().mockResolvedValue(0);
+      deliveryModel.find = jest.fn().mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue({
+            populate: jest.fn().mockResolvedValue([])
+          })
+        })
+      });
 
       const result = await service.getOverview();
-      expect(result.data.totalDeliveries).toBe(0);
-      expect(result.data.completionRate).toBe(0);
+      expect(result.data.cards.totalOrder).toBe(0);
+      expect(result.data.todaysStatus.orders).toBe(0);
     });
   });
 
@@ -71,7 +86,7 @@ describe('AnalyticsService', () => {
       deliveryModel.aggregate = jest.fn().mockResolvedValue([]);
       const result = await service.getChart(3);
       expect(result.data).toHaveLength(3);
-      expect(result.data.every((d: any) => d.totalOrders === 0)).toBe(true);
+      expect(result.data.every((d: any) => d.completedOrders === 0 && d.canceledOrders === 0)).toBe(true);
     });
 
     it('maps aggregation rows onto the correct date buckets', async () => {
@@ -79,13 +94,13 @@ describe('AnalyticsService', () => {
       today.setHours(0, 0, 0, 0);
       const key = today.toISOString().slice(0, 10);
       deliveryModel.aggregate = jest.fn().mockResolvedValue([
-        { _id: key, totalOrders: 5, deliveredOrders: 2 },
+        { _id: key, completedOrders: 5, canceledOrders: 2 },
       ]);
 
       const result = await service.getChart(1);
       expect(result.data[0].date).toBe(key);
-      expect(result.data[0].totalOrders).toBe(5);
-      expect(result.data[0].deliveredOrders).toBe(2);
+      expect(result.data[0].completedOrders).toBe(5);
+      expect(result.data[0].canceledOrders).toBe(2);
     });
   });
 });
