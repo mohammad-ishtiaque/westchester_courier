@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsInt, Min } from 'class-validator';
+import { IsEnum, IsOptional, IsInt, Min, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DeliveryStatus } from '../../common/enums/delivery-status.enum';
 
@@ -6,6 +6,10 @@ import { DeliveryStatus } from '../../common/enums/delivery-status.enum';
 export class QueryDeliveryDto {
   @IsOptional() @IsEnum(DeliveryStatus)
   status?: DeliveryStatus;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   page?: number = 1;

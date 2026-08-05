@@ -8,6 +8,9 @@ export class CreateDeliveryDto {
   parcelType?: string;
 
   @IsOptional() @IsString()
+  size?: string;
+
+  @IsOptional() @IsString()
   weight?: string;
 
   // --- Step 1: Customer Information ---

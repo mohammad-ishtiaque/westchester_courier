@@ -30,6 +30,9 @@ export class Delivery {
   parcelType?: string;
 
   @Prop()
+  size?: string;
+
+  @Prop()
   weight?: string;
 
   // --- Customer Information ---

@@ -45,6 +45,12 @@ export class DeliveryController {
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Get('history')
+  getAdminJobHistory(@Query() query: QueryDeliveryDto) {
+    return this.deliveryService.getAdminJobHistory(query);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @Get('customers/suggest')
   suggestCustomers(@Query('search') search?: string) {
     return this.deliveryService.suggestCustomers(search);
@@ -108,6 +114,12 @@ export class DeliveryController {
   @Get('my')
   findMine(@CurrentUser() driver: TokenPayload, @Query() query: QueryDeliveryDto) {
     return this.deliveryService.findMine(driver, query);
+  }
+
+  @Roles(Role.DRIVER)
+  @Get('my-history')
+  getDriverJobHistory(@CurrentUser() driver: TokenPayload, @Query() query: QueryDeliveryDto & { month?: number; year?: number }) {
+    return this.deliveryService.getDriverJobHistory(driver, query);
   }
 
   @Roles(Role.DRIVER)

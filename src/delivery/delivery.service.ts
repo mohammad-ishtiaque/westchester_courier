@@ -71,6 +71,7 @@ export class DeliveryService {
       trackingToken,
       title: dto.title,
       parcelType: dto.parcelType,
+      size: dto.size,
       weight: dto.weight,
 
       customerName: dto.customerName,
@@ -135,6 +136,59 @@ export class DeliveryService {
     };
   }
 
+  async getAdminJobHistory(query: QueryDeliveryDto) {
+    const filter: Record<string, unknown> = {
+      status: { $in: [DeliveryStatus.DELIVERED, DeliveryStatus.CANCELLED] },
+    };
+
+    if (query.status) {
+      filter.status = query.status;
+    }
+
+    if (query.search) {
+      const regex = new RegExp(query.search, 'i');
+      filter.$or = [
+        { title: regex },
+        { parcelType: regex },
+        { customerName: regex },
+        { customerEmail: regex },
+      ];
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const [items, total] = await Promise.all([
+      this.deliveryModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      this.deliveryModel.countDocuments(filter),
+    ]);
+
+    const formattedItems = items.map((item) => {
+      const obj = item.toObject() as any;
+      return {
+        _id: obj._id,
+        title: obj.title,
+        parcelType: obj.parcelType,
+        size: obj.size,
+        weight: obj.weight,
+        customerName: obj.customerName,
+        customerEmail: obj.customerEmail,
+        orderTime: obj.createdAt,
+        status: obj.status,
+      };
+    });
+
+    return {
+      message: 'Admin job history fetched successfully',
+      data: formattedItems,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
   async update(id: string, dto: UpdateDeliveryDto) {
     const delivery = await this.findByIdOrThrow(id);
     if (delivery.status !== DeliveryStatus.UNASSIGNED && delivery.status !== DeliveryStatus.ASSIGNED) {
@@ -143,6 +197,7 @@ export class DeliveryService {
 
     if (dto.title != null) delivery.title = dto.title;
     if (dto.parcelType != null) delivery.parcelType = dto.parcelType;
+    if ((dto as any).size != null) delivery.size = (dto as any).size;
     if (dto.weight != null) delivery.weight = dto.weight;
 
     if (dto.customerName != null) delivery.customerName = dto.customerName;
@@ -334,6 +389,79 @@ export class DeliveryService {
       message: 'Your deliveries fetched successfully',
       data: formattedItems,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async getDriverJobHistory(driver: TokenPayload, query: QueryDeliveryDto & { month?: number; year?: number }) {
+    const driverIds = this.getDriverIdsList(driver);
+    const filter: Record<string, unknown> = {
+      assignedDriver: { $in: driverIds },
+      status: {
+        $in: [
+          DeliveryStatus.DRIVER_ACCEPTED,
+          DeliveryStatus.DRIVER_TO_PICKUP,
+          DeliveryStatus.PICKED_UP,
+          DeliveryStatus.IN_TRANSIT,
+          DeliveryStatus.OUT_FOR_DELIVERY,
+          DeliveryStatus.DELIVERED,
+          DeliveryStatus.CANCELLED,
+        ],
+      },
+    };
+
+    if (query.year && query.month) {
+      const targetYear = query.year;
+      const targetMonth = query.month; // 1-12
+      const startDate = new Date(targetYear, targetMonth - 1, 1, 0, 0, 0, 0);
+      const endDate = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
+      filter.createdAt = { $gte: startDate, $lt: endDate };
+    }
+
+    const items = await this.deliveryModel.find(filter).sort({ createdAt: -1 });
+
+    let totalAssigned = 0;
+    let totalDelivery = 0;
+    let totalCanceled = 0;
+
+    const groupedData: Record<string, any[]> = {};
+
+    items.forEach((item) => {
+      const obj = item.toObject() as any;
+      totalAssigned++;
+      if (obj.status === DeliveryStatus.DELIVERED) totalDelivery++;
+      if (obj.status === DeliveryStatus.CANCELLED) totalCanceled++;
+
+      const dateStr = obj.createdAt.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+
+      if (!groupedData[dateStr]) groupedData[dateStr] = [];
+
+      groupedData[dateStr].push({
+        _id: obj._id,
+        orderNumber: obj.orderNumber,
+        assignDate: obj.createdAt,
+        pickupAddress: obj.pickupAddress,
+        dropoffAddress: obj.dropoffAddress,
+        status: obj.status,
+      });
+    });
+
+    const formattedData = Object.keys(groupedData).map((date) => ({
+      date,
+      jobs: groupedData[date],
+    }));
+
+    return {
+      message: 'Driver job history fetched successfully',
+      data: formattedData,
+      summary: {
+        totalAssigned,
+        totalDelivery,
+        totalCanceled,
+      },
     };
   }
 
