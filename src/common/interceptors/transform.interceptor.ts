@@ -29,15 +29,22 @@ export class TransformInterceptor<T>
         const isEnvelope =
           result && typeof result === 'object' && ('message' in result || 'data' in result || 'meta' in result);
 
-        const message = isEnvelope ? result.message : undefined;
-        const data = isEnvelope ? result.data : result;
-        const meta = isEnvelope ? result.meta : undefined;
+        if (!isEnvelope) {
+          return {
+            success: true,
+            statusCode,
+            ...(result != null && { data: result }),
+          };
+        }
+
+        const { message, data, meta, ...rest } = result;
 
         return {
           success: true,
           statusCode,
           ...(message != null && { message }),
           ...(meta != null && { meta }),
+          ...rest,
           ...(data != null && { data }),
         };
       }),
