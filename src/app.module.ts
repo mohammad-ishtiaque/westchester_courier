@@ -19,6 +19,7 @@ import { SupportModule } from './support/support.module';
 import { MailModule } from './common/mail/mail.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { ReportModule } from './report/report.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AnalyticsModule,
     CmsModule,
     SupportModule,
+    ReportModule,
   ],
   controllers: [AppController],
   providers: [

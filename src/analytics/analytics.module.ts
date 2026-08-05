@@ -5,8 +5,10 @@ import { VehicleModule } from '../vehicle/vehicle.module';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 
+import { ReportModule } from '../report/report.module';
+
 @Module({
-  imports: [DeliveryModule, UserModule, VehicleModule],
+  imports: [DeliveryModule, UserModule, VehicleModule, ReportModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
 })

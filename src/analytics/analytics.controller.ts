@@ -17,6 +17,6 @@ export class AnalyticsController {
 
   @Get('chart')
   getChart(@Query() query: AnalyticsChartQueryDto) {
-    return this.analyticsService.getChart(query.days ?? 7);
+    return this.analyticsService.getChart(query.year, query.month);
   }
 }

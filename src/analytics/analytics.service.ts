@@ -4,19 +4,16 @@ import { Model } from 'mongoose';
 import { Delivery, DeliveryDocument } from '../delivery/schemas/delivery.schema';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { Vehicle, VehicleDocument } from '../vehicle/schemas/vehicle.schema';
+import { Report, ReportDocument } from '../report/schemas/report.schema';
 import { DeliveryStatus } from '../common/enums/delivery-status.enum';
 
-// Backs the admin dashboard's top-level KPI cards + chart. There's no Payment/pricing
-// model in this app (no revenue figures exist to aggregate), so the Figma "revenue chart"
-// is proxied here with delivery-volume-over-time instead — flagged in the testing guide.
-// If a Payment/Invoice model gets added later, swap the $sum in getChart() for an actual
-// revenue field instead of order counts.
 @Injectable()
 export class AnalyticsService {
   constructor(
     @InjectModel(Delivery.name) private readonly deliveryModel: Model<DeliveryDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Vehicle.name) private readonly vehicleModel: Model<VehicleDocument>,
+    @InjectModel(Report.name) private readonly reportModel: Model<ReportDocument>,
   ) {}
 
   async getOverview() {
@@ -61,16 +58,17 @@ export class AnalyticsService {
       completed: facetResult.todayCompleted[0]?.count ?? 0,
     };
 
-    const recentDeliveries = await this.deliveryModel
+    const recentReportsRaw = await this.reportModel
       .find()
       .sort({ createdAt: -1 })
       .limit(5)
-      .populate('assignedDriver', 'name');
+      .populate('driver', 'name')
+      .populate('delivery', 'orderNumber');
 
-    const recentReports = recentDeliveries.map(d => ({
-      _id: d._id,
-      orderNumber: d.orderNumber,
-      driverName: (d.assignedDriver as any)?.name ?? 'Unassigned'
+    const recentReports = recentReportsRaw.map(r => ({
+      _id: r._id,
+      orderNumber: (r.delivery as any)?.orderNumber ?? 'Unknown',
+      driverName: (r.driver as any)?.name ?? 'Unassigned'
     }));
 
     return {
@@ -88,14 +86,17 @@ export class AnalyticsService {
     };
   }
 
-  async getChart(days: number) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const since = new Date(today);
-    since.setDate(since.getDate() - (days - 1));
+  async getChart(year?: number, month?: number) {
+    const now = new Date();
+    const targetYear = year ?? now.getFullYear();
+    const targetMonth = month ?? now.getMonth() + 1; // 1-12
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1, 0, 0, 0, 0);
+    const endDate = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
+    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
 
     const rows = await this.deliveryModel.aggregate([
-      { $match: { createdAt: { $gte: since } } },
+      { $match: { createdAt: { $gte: startDate, $lt: endDate } } },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
@@ -107,14 +108,14 @@ export class AnalyticsService {
     const byDate = new Map(rows.map((r) => [r._id, r]));
 
     const series: Array<{ date: string; completedOrders: number; canceledOrders: number }> = [];
-    for (let i = 0; i < days; i++) {
-      const d = new Date(since);
+    for (let i = 0; i < daysInMonth; i++) {
+      const d = new Date(startDate);
       d.setDate(d.getDate() + i);
       const key = d.toISOString().slice(0, 10);
       const row = byDate.get(key);
       series.push({ date: key, completedOrders: row?.completedOrders ?? 0, canceledOrders: row?.canceledOrders ?? 0 });
     }
 
-    return { message: 'Analytics chart data fetched successfully', data: series.reverse() };
+    return { message: 'Analytics chart data fetched successfully', data: series };
   }
 }
