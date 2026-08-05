@@ -20,6 +20,7 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { QueryDeliveryDto } from './dto/query-delivery.dto';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
+import { GetDriverRequestsDto, RequestTypeFilter } from './dto/get-driver-requests.dto';
 
 @Injectable()
 export class DeliveryService {
@@ -336,6 +337,134 @@ export class DeliveryService {
     };
   }
 
+  async getDriverRequests(driver: TokenPayload, query: GetDriverRequestsDto) {
+    const now = new Date();
+    const targetYear = query.year ?? now.getFullYear();
+    const targetMonth = query.month ?? now.getMonth() + 1; // 1-12
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1, 0, 0, 0, 0);
+    const endDate = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
+
+    const driverIds = this.getDriverIdsList(driver);
+
+    const monthFilter: Record<string, unknown> = {
+      assignedDriver: { $in: driverIds },
+      createdAt: { $gte: startDate, $lt: endDate },
+    };
+
+    const [pendingCount, acceptedCount] = await Promise.all([
+      this.deliveryModel.countDocuments({
+        ...monthFilter,
+        status: DeliveryStatus.ASSIGNED,
+      }),
+      this.deliveryModel.countDocuments({
+        ...monthFilter,
+        status: {
+          $in: [
+            DeliveryStatus.DRIVER_ACCEPTED,
+            DeliveryStatus.DRIVER_TO_PICKUP,
+            DeliveryStatus.PICKED_UP,
+            DeliveryStatus.IN_TRANSIT,
+            DeliveryStatus.OUT_FOR_DELIVERY,
+          ],
+        },
+      }),
+    ]);
+
+    const listFilter: Record<string, unknown> = { ...monthFilter };
+    if (query.type === RequestTypeFilter.PENDING) {
+      listFilter.status = DeliveryStatus.ASSIGNED;
+    } else if (query.type === RequestTypeFilter.ACCEPTED) {
+      listFilter.status = {
+        $in: [
+          DeliveryStatus.DRIVER_ACCEPTED,
+          DeliveryStatus.DRIVER_TO_PICKUP,
+          DeliveryStatus.PICKED_UP,
+          DeliveryStatus.IN_TRANSIT,
+          DeliveryStatus.OUT_FOR_DELIVERY,
+        ],
+      };
+    } else {
+      listFilter.status = {
+        $in: [
+          DeliveryStatus.ASSIGNED,
+          DeliveryStatus.DRIVER_ACCEPTED,
+          DeliveryStatus.DRIVER_TO_PICKUP,
+          DeliveryStatus.PICKED_UP,
+          DeliveryStatus.IN_TRANSIT,
+          DeliveryStatus.OUT_FOR_DELIVERY,
+          DeliveryStatus.DELIVERED,
+        ],
+      };
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const [items, total] = await Promise.all([
+      this.deliveryModel
+        .find(listFilter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      this.deliveryModel.countDocuments(listFilter),
+    ]);
+
+    const formattedItems = items.map((item) => {
+      const obj = item.toObject() as any;
+      const isAccepted = obj.status !== DeliveryStatus.ASSIGNED;
+      const displayDate = obj.pickupDate ? new Date(obj.pickupDate) : new Date(obj.createdAt);
+      const formattedDate = displayDate.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+
+      return {
+        _id: obj._id,
+        orderNumber: obj.orderNumber,
+        title: obj.title,
+        parcelType: obj.parcelType,
+        weight: obj.weight,
+        customerName: obj.customerName,
+        customerPhone: obj.customerPhone,
+        pickupAddress: obj.pickupAddress,
+        pickupCoordinates: obj.pickupCoordinates || null,
+        preferrablePickupTime: obj.preferrablePickupTime,
+        pickupDate: obj.pickupDate,
+        receiverName: obj.receiverName,
+        receiverPhone: obj.receiverPhone,
+        dropoffAddress: obj.dropoffAddress,
+        dropoffCoordinates: obj.dropoffCoordinates || null,
+        preferrableDeliveryDate: obj.preferrableDeliveryDate,
+        status: obj.status,
+        isAccepted,
+        statusLabel: isAccepted ? 'Accepted' : 'Accept',
+        createdAt: obj.createdAt,
+        formattedDate,
+        trackingUrl: this.formatTrackingUrl(item.trackingToken),
+      };
+    });
+
+    return {
+      message: 'Driver requests page data fetched successfully',
+      data: formattedItems,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        pendingRequestCount: pendingCount,
+        acceptedCount: acceptedCount,
+        filter: {
+          type: query.type || RequestTypeFilter.ALL,
+          month: targetMonth,
+          year: targetYear,
+        },
+      },
+    };
+  }
+
   async findOne(id: string, user: TokenPayload) {
     const delivery = await this.deliveryModel
       .findById(id)
@@ -535,6 +664,51 @@ export class DeliveryService {
             }
           : null,
       },
+    };
+  }
+
+  // ---------- Customer Suggestions (admin autocomplete) ----------
+
+  async suggestCustomers(search?: string) {
+    const matchStage: Record<string, unknown> = {};
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      matchStage.$or = [
+        { customerName: regex },
+        { customerEmail: regex },
+        { customerPhone: regex },
+      ];
+    }
+
+    const customers = await this.deliveryModel.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: { $toLower: '$customerPhone' },
+          customerName: { $last: '$customerName' },
+          customerEmail: { $last: '$customerEmail' },
+          customerPhone: { $last: '$customerPhone' },
+          orderCount: { $sum: 1 },
+          lastOrderAt: { $max: '$createdAt' },
+        },
+      },
+      { $sort: { lastOrderAt: -1 } },
+      { $limit: 10 },
+      {
+        $project: {
+          _id: 0,
+          customerName: 1,
+          customerEmail: 1,
+          customerPhone: 1,
+          orderCount: 1,
+          lastOrderAt: 1,
+        },
+      },
+    ]);
+
+    return {
+      message: 'Customer suggestions fetched successfully',
+      data: customers,
     };
   }
 

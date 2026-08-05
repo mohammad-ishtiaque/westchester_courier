@@ -14,6 +14,7 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { QueryDeliveryDto } from './dto/query-delivery.dto';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
+import { GetDriverRequestsDto } from './dto/get-driver-requests.dto';
 import { buildDiskStorage, imageFileFilter } from '../common/utils/upload.util';
 
 @Controller('deliveries')
@@ -41,6 +42,12 @@ export class DeliveryController {
   @Get()
   findAll(@Query() query: QueryDeliveryDto) {
     return this.deliveryService.findAllForAdmin(query);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Get('customers/suggest')
+  suggestCustomers(@Query('search') search?: string) {
+    return this.deliveryService.suggestCustomers(search);
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
@@ -101,6 +108,15 @@ export class DeliveryController {
   @Get('my')
   findMine(@CurrentUser() driver: TokenPayload, @Query() query: QueryDeliveryDto) {
     return this.deliveryService.findMine(driver, query);
+  }
+
+  @Roles(Role.DRIVER)
+  @Get('requests')
+  getDriverRequests(
+    @CurrentUser() driver: TokenPayload,
+    @Query() query: GetDriverRequestsDto,
+  ) {
+    return this.deliveryService.getDriverRequests(driver, query);
   }
 
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.DRIVER)

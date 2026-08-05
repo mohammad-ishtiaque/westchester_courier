@@ -251,4 +251,30 @@ describe('DeliveryService', () => {
       expect(result.meta).toEqual({ page: 2, limit: 20, total: 45, totalPages: 3 });
     });
   });
+
+  describe('getDriverRequests', () => {
+    it('fetches driver requests with counts for pending and accepted', async () => {
+      const items = [
+        mockDelivery({ status: DeliveryStatus.ASSIGNED }),
+        mockDelivery({ status: DeliveryStatus.DRIVER_ACCEPTED }),
+      ];
+      const find = { sort: jest.fn().mockReturnThis(), skip: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(items) };
+      deliveryModel.find = jest.fn().mockReturnValue(find);
+      deliveryModel.countDocuments = jest
+        .fn()
+        .mockResolvedValueOnce(4) // pending count
+        .mockResolvedValueOnce(2) // accepted count
+        .mockResolvedValueOnce(6); // total list count
+
+      const result = await service.getDriverRequests(driverUser as any, { type: 'all' as any });
+
+      expect(result.data.length).toBe(2);
+      expect(result.meta.total).toBe(6);
+      expect(result.meta.pendingRequestCount).toBe(4);
+      expect(result.meta.acceptedCount).toBe(2);
+      // No top-level duplicates
+      expect((result as any).pendingRequest).toBeUndefined();
+      expect((result as any).summary).toBeUndefined();
+    });
+  });
 });
