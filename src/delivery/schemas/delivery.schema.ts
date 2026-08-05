@@ -103,10 +103,16 @@ export class Delivery {
   rejectionReason?: string;
 
   @Prop()
+  recipientName?: string;
+
+  @Prop()
+  recipientPhone?: string;
+
+  @Prop()
   proofOfDeliveryImage?: string;
 
   @Prop()
-  recipientName?: string;
+  recipientSignatureImage?: string;
 
   @Prop()
   deliveredAt?: Date;

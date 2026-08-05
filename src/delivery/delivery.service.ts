@@ -733,7 +733,8 @@ export class DeliveryService {
       throw new BadRequestException('Delivery must be IN_TRANSIT or OUT_FOR_DELIVERY before proof of delivery can be submitted');
     }
     delivery.status = DeliveryStatus.DELIVERED;
-    delivery.proofOfDeliveryImage = dto.proofOfDeliveryImage;
+    if (dto.proofOfDeliveryImage) delivery.proofOfDeliveryImage = dto.proofOfDeliveryImage;
+    if (dto.recipientSignatureImage) delivery.recipientSignatureImage = dto.recipientSignatureImage;
     delivery.recipientName = dto.recipientName;
     delivery.deliveredAt = new Date();
     await delivery.save();

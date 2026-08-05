@@ -5,6 +5,10 @@ export class ProofOfDeliveryDto {
   @IsString()
   proofOfDeliveryImage?: string;
 
+  @IsOptional()
+  @IsString()
+  recipientSignatureImage?: string;
+
   @IsString()
   @IsNotEmpty()
   recipientName: string;

@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { DeliveryService } from './delivery.service';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Public } from '../common/decorators/public.decorator';
@@ -195,22 +195,34 @@ export class DeliveryController {
   @Roles(Role.DRIVER)
   @Patch(':id/proof-of-delivery')
   @UseInterceptors(
-    FileInterceptor('proofOfDeliveryImage', {
-      storage: buildDiskStorage('proof-of-delivery'),
-      fileFilter: imageFileFilter,
-      limits: { fileSize: 5 * 1024 * 1024 },
-    }),
+    FileFieldsInterceptor(
+      [
+        { name: 'proofOfDeliveryImage', maxCount: 1 },
+        { name: 'recipientSignatureImage', maxCount: 1 },
+      ],
+      {
+        storage: buildDiskStorage('proof-of-delivery'),
+        fileFilter: imageFileFilter,
+        limits: { fileSize: 5 * 1024 * 1024 },
+      },
+    ),
   )
   submitProofOfDelivery(
     @Param('id') id: string,
     @CurrentUser() driver: TokenPayload,
     @Body() dto: ProofOfDeliveryDto,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFiles()
+    files?: {
+      proofOfDeliveryImage?: Express.Multer.File[];
+      recipientSignatureImage?: Express.Multer.File[];
+    },
   ) {
-    const imagePath = file ? file.path.replace(/\\/g, '/') : dto.proofOfDeliveryImage;
+    const proofImagePath = files?.proofOfDeliveryImage?.[0]?.path?.replace(/\\/g, '/') || dto.proofOfDeliveryImage;
+    const signatureImagePath = files?.recipientSignatureImage?.[0]?.path?.replace(/\\/g, '/') || dto.recipientSignatureImage;
     return this.deliveryService.submitProofOfDelivery(id, driver, {
       ...dto,
-      proofOfDeliveryImage: imagePath,
+      proofOfDeliveryImage: proofImagePath,
+      recipientSignatureImage: signatureImagePath,
     });
   }
 }
