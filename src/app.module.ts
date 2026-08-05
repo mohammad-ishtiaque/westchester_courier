@@ -15,6 +15,7 @@ import { DriverManagementModule } from './driver-management/driver-management.mo
 import { CustomerModule } from './customer/customer.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { CmsModule } from './cms/cms.module';
+import { SupportModule } from './support/support.module';
 import { MailModule } from './common/mail/mail.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -43,6 +44,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     CustomerModule,
     AnalyticsModule,
     CmsModule,
+    SupportModule,
   ],
   controllers: [AppController],
   providers: [
