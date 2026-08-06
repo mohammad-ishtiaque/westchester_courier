@@ -453,33 +453,21 @@ export class DeliveryService {
     const driverIds = this.getDriverIdsList(driver);
     const filter: Record<string, unknown> = {
       assignedDriver: { $in: driverIds },
+      status: {
+        $in: [
+          DeliveryStatus.DRIVER_ACCEPTED,
+          DeliveryStatus.DRIVER_TO_PICKUP,
+          DeliveryStatus.PICKED_UP,
+          DeliveryStatus.IN_TRANSIT,
+          DeliveryStatus.OUT_FOR_DELIVERY,
+        ],
+      },
     };
 
     if (type === 'pickup') {
-      filter.status = {
-        $in: [
-          DeliveryStatus.DRIVER_ACCEPTED,
-          DeliveryStatus.DRIVER_TO_PICKUP,
-        ],
-      };
+      filter.pickupCoordinates = { $ne: null };
     } else if (type === 'delivery') {
-      filter.status = {
-        $in: [
-          DeliveryStatus.PICKED_UP,
-          DeliveryStatus.IN_TRANSIT,
-          DeliveryStatus.OUT_FOR_DELIVERY,
-        ],
-      };
-    } else {
-      filter.status = {
-        $in: [
-          DeliveryStatus.DRIVER_ACCEPTED,
-          DeliveryStatus.DRIVER_TO_PICKUP,
-          DeliveryStatus.PICKED_UP,
-          DeliveryStatus.IN_TRANSIT,
-          DeliveryStatus.OUT_FOR_DELIVERY,
-        ],
-      };
+      filter.dropoffCoordinates = { $ne: null };
     }
 
     const items = await this.deliveryModel
@@ -552,9 +540,19 @@ export class DeliveryService {
         receiverPhone: item.receiverPhone,
       }));
 
+    let points: any[] = [];
+    if (type === 'pickup') {
+      points = pickupPoints;
+    } else if (type === 'delivery') {
+      points = deliveryPoints;
+    } else {
+      points = [...pickupPoints, ...deliveryPoints];
+    }
+
     return {
       message: 'Driver map deliveries fetched successfully',
       data: formattedItems,
+      points,
       pickupPoints: type === 'delivery' ? [] : pickupPoints,
       deliveryPoints: type === 'pickup' ? [] : deliveryPoints,
     };
