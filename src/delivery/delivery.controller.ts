@@ -117,6 +117,12 @@ export class DeliveryController {
   }
 
   @Roles(Role.DRIVER)
+  @Get('my-map')
+  getMyMapDeliveries(@CurrentUser() driver: TokenPayload) {
+    return this.deliveryService.getMyMapDeliveries(driver);
+  }
+
+  @Roles(Role.DRIVER)
   @Get('my-history')
   getDriverJobHistory(@CurrentUser() driver: TokenPayload, @Query() query: QueryDeliveryDto & { month?: number; year?: number }) {
     return this.deliveryService.getDriverJobHistory(driver, query);

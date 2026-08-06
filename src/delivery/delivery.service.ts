@@ -409,18 +409,33 @@ export class DeliveryService {
 
     const formattedItems = items.map((item) => {
       const obj = item.toObject() as any;
+      const pickupLng = obj.pickupCoordinates?.coordinates?.[0];
+      const pickupLat = obj.pickupCoordinates?.coordinates?.[1];
+      const dropoffLng = obj.dropoffCoordinates?.coordinates?.[0];
+      const dropoffLat = obj.dropoffCoordinates?.coordinates?.[1];
+
       return {
         _id: obj._id,
         orderNumber: obj.orderNumber,
         status: obj.status,
+        title: obj.title,
+        parcelType: obj.parcelType,
+        size: obj.size,
+        weight: obj.weight,
         customerName: obj.customerName,
         customerPhone: obj.customerPhone,
         pickupAddress: obj.pickupAddress,
+        pickupCoordinates: obj.pickupCoordinates || null,
+        pickupLat: pickupLat ?? null,
+        pickupLng: pickupLng ?? null,
         preferrablePickupTime: obj.preferrablePickupTime,
         pickupDate: obj.pickupDate,
         receiverName: obj.receiverName,
         receiverPhone: obj.receiverPhone,
         dropoffAddress: obj.dropoffAddress,
+        dropoffCoordinates: obj.dropoffCoordinates || null,
+        dropoffLat: dropoffLat ?? null,
+        dropoffLng: dropoffLng ?? null,
         preferrableDeliveryDate: obj.preferrableDeliveryDate,
         createdAt: obj.createdAt,
         trackingUrl: this.formatTrackingUrl(item.trackingToken),
@@ -431,6 +446,65 @@ export class DeliveryService {
       message: 'Your deliveries fetched successfully',
       data: formattedItems,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async getMyMapDeliveries(driver: TokenPayload) {
+    const driverIds = this.getDriverIdsList(driver);
+    const filter = {
+      assignedDriver: { $in: driverIds },
+      status: {
+        $in: [
+          DeliveryStatus.DRIVER_ACCEPTED,
+          DeliveryStatus.DRIVER_TO_PICKUP,
+          DeliveryStatus.PICKED_UP,
+          DeliveryStatus.IN_TRANSIT,
+          DeliveryStatus.OUT_FOR_DELIVERY,
+        ],
+      },
+    };
+
+    const items = await this.deliveryModel
+      .find(filter)
+      .sort({ createdAt: -1 });
+
+    const formattedItems = items.map((item) => {
+      const obj = item.toObject() as any;
+      const pickupLng = obj.pickupCoordinates?.coordinates?.[0];
+      const pickupLat = obj.pickupCoordinates?.coordinates?.[1];
+      const dropoffLng = obj.dropoffCoordinates?.coordinates?.[0];
+      const dropoffLat = obj.dropoffCoordinates?.coordinates?.[1];
+
+      return {
+        _id: obj._id,
+        orderNumber: obj.orderNumber,
+        status: obj.status,
+        title: obj.title,
+        parcelType: obj.parcelType,
+        size: obj.size,
+        weight: obj.weight,
+        packageDescription: obj.packageDescription,
+        itemCount: obj.size || obj.parcelType || '1 Item',
+        customerName: obj.customerName,
+        customerPhone: obj.customerPhone,
+        pickupAddress: obj.pickupAddress,
+        pickupCoordinates: obj.pickupCoordinates || null,
+        pickupLat: pickupLat ?? null,
+        pickupLng: pickupLng ?? null,
+        receiverName: obj.receiverName,
+        receiverPhone: obj.receiverPhone,
+        dropoffAddress: obj.dropoffAddress,
+        dropoffCoordinates: obj.dropoffCoordinates || null,
+        dropoffLat: dropoffLat ?? null,
+        dropoffLng: dropoffLng ?? null,
+        createdAt: obj.createdAt,
+        trackingUrl: this.formatTrackingUrl(item.trackingToken),
+      };
+    });
+
+    return {
+      message: 'Driver map deliveries fetched successfully',
+      data: formattedItems,
     };
   }
 
