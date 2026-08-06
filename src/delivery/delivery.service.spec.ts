@@ -133,7 +133,7 @@ describe('DeliveryService', () => {
         populate: jest.fn().mockResolvedValue(doc),
       });
       const result = await service.findOne('delivery-1', adminUser as any);
-      expect(result.data).toEqual(expect.objectContaining({ _id: 'delivery-1', trackingUrl: 'http://localhost:3000/track/token123' }));
+      expect(result.data).toEqual(expect.objectContaining({ _id: 'delivery-1', trackingUrl: 'http://localhost:2050/track/token123' }));
     });
 
     it('returns map details for assigned delivery', async () => {

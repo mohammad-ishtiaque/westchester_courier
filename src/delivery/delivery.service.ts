@@ -40,7 +40,8 @@ export class DeliveryService {
 
   private formatTrackingUrl(token?: string): string | null {
     if (!token) return null;
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const rawUrl = process.env.FRONTEND_URL || 'http://localhost:2050';
+    const baseUrl = rawUrl.replace(/\/+$/, '');
     return `${baseUrl}/track/${token}`;
   }
 
@@ -109,7 +110,25 @@ export class DeliveryService {
 
   async findAllForAdmin(query: QueryDeliveryDto) {
     const filter: Record<string, unknown> = {};
-    if (query.status) filter.status = query.status;
+
+    if (query.status) {
+      filter.status = query.status;
+    } else {
+      filter.status = { $nin: [DeliveryStatus.DELIVERED, DeliveryStatus.CANCELLED] };
+    }
+
+    if (query.search) {
+      const regex = new RegExp(query.search, 'i');
+      filter.$or = [
+        { title: regex },
+        { parcelType: regex },
+        { customerName: regex },
+        { customerPhone: regex },
+        { customerEmail: regex },
+        { recipientName: regex },
+        { recipientPhone: regex },
+      ];
+    }
 
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
