@@ -6,17 +6,34 @@ import { CreateSupportDto } from './dto/create-support.dto';
 import { QuerySupportDto } from './dto/query-support.dto';
 import type { TokenPayload } from '../common/interfaces/token-payload.interface';
 import { SupportStatus } from '../common/enums/support-status.enum';
+import { NotificationService } from '../notification/notification.service';
+import { Role } from '../common/enums/role.enum';
 
 @Injectable()
 export class SupportService {
   constructor(
     @InjectModel(Support.name) private readonly supportModel: Model<SupportDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(driver: TokenPayload, dto: CreateSupportDto) {
     const support = await this.supportModel.create({
       ...dto,
       driverId: driver.userId,
+    });
+
+    const driverName = dto.name || 'A driver';
+    const messagePreview = dto.message
+      ? dto.message.length > 50
+        ? `${dto.message.slice(0, 50)}...`
+        : dto.message
+      : 'Support inquiry';
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'New Support Request',
+      body: `${driverName} submitted a support request: "${messagePreview}"`,
+      type: 'SUPPORT_REQUEST',
     });
 
     return {

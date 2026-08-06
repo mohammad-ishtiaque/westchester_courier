@@ -18,7 +18,7 @@ export class Support {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   driverId: Types.ObjectId;
 
-  @Prop({ enum: SupportStatus, default: SupportStatus.PENDING })
+  @Prop({ type: String, enum: SupportStatus, default: SupportStatus.PENDING })
   status: SupportStatus;
 }
 
