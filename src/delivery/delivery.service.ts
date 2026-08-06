@@ -1123,6 +1123,10 @@ export class DeliveryService {
         dropoffCoordinates: delivery.dropoffCoordinates,
         packageDescription: delivery.packageDescription,
         currentLocation: delivery.currentLocation || driver?.locationCoordinates || null,
+        proofOfDeliveryImage: delivery.proofOfDeliveryImage || null,
+        recipientSignatureImage: delivery.recipientSignatureImage || null,
+        recipientName: delivery.recipientName || delivery.receiverName || null,
+        deliveredAt: delivery.deliveredAt || null,
         trackingToken: delivery.trackingToken,
         trackingUrl,
         driver: driver
