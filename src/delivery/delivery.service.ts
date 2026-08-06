@@ -449,11 +449,29 @@ export class DeliveryService {
     };
   }
 
-  async getMyMapDeliveries(driver: TokenPayload) {
+  async getMyMapDeliveries(driver: TokenPayload, type?: 'pickup' | 'delivery' | 'all') {
     const driverIds = this.getDriverIdsList(driver);
-    const filter = {
+    const filter: Record<string, unknown> = {
       assignedDriver: { $in: driverIds },
-      status: {
+    };
+
+    if (type === 'pickup') {
+      filter.status = {
+        $in: [
+          DeliveryStatus.DRIVER_ACCEPTED,
+          DeliveryStatus.DRIVER_TO_PICKUP,
+        ],
+      };
+    } else if (type === 'delivery') {
+      filter.status = {
+        $in: [
+          DeliveryStatus.PICKED_UP,
+          DeliveryStatus.IN_TRANSIT,
+          DeliveryStatus.OUT_FOR_DELIVERY,
+        ],
+      };
+    } else {
+      filter.status = {
         $in: [
           DeliveryStatus.DRIVER_ACCEPTED,
           DeliveryStatus.DRIVER_TO_PICKUP,
@@ -461,8 +479,8 @@ export class DeliveryService {
           DeliveryStatus.IN_TRANSIT,
           DeliveryStatus.OUT_FOR_DELIVERY,
         ],
-      },
-    };
+      };
+    }
 
     const items = await this.deliveryModel
       .find(filter)
@@ -502,9 +520,43 @@ export class DeliveryService {
       };
     });
 
+    const pickupPoints = formattedItems
+      .filter((item) => item.pickupLat != null && item.pickupLng != null)
+      .map((item) => ({
+        deliveryId: item._id,
+        orderNumber: item.orderNumber,
+        status: item.status,
+        itemCount: item.itemCount,
+        pointType: 'pickup',
+        address: item.pickupAddress,
+        coordinates: item.pickupCoordinates,
+        lat: item.pickupLat,
+        lng: item.pickupLng,
+        customerName: item.customerName,
+        customerPhone: item.customerPhone,
+      }));
+
+    const deliveryPoints = formattedItems
+      .filter((item) => item.dropoffLat != null && item.dropoffLng != null)
+      .map((item) => ({
+        deliveryId: item._id,
+        orderNumber: item.orderNumber,
+        status: item.status,
+        itemCount: item.itemCount,
+        pointType: 'delivery',
+        address: item.dropoffAddress,
+        coordinates: item.dropoffCoordinates,
+        lat: item.dropoffLat,
+        lng: item.dropoffLng,
+        receiverName: item.receiverName,
+        receiverPhone: item.receiverPhone,
+      }));
+
     return {
       message: 'Driver map deliveries fetched successfully',
       data: formattedItems,
+      pickupPoints: type === 'delivery' ? [] : pickupPoints,
+      deliveryPoints: type === 'pickup' ? [] : deliveryPoints,
     };
   }
 

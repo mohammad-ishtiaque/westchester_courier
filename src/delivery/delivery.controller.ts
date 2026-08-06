@@ -118,8 +118,11 @@ export class DeliveryController {
 
   @Roles(Role.DRIVER)
   @Get('my-map')
-  getMyMapDeliveries(@CurrentUser() driver: TokenPayload) {
-    return this.deliveryService.getMyMapDeliveries(driver);
+  getMyMapDeliveries(
+    @CurrentUser() driver: TokenPayload,
+    @Query('type') type?: 'pickup' | 'delivery' | 'all',
+  ) {
+    return this.deliveryService.getMyMapDeliveries(driver, type);
   }
 
   @Roles(Role.DRIVER)
