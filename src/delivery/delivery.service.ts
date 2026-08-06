@@ -57,12 +57,26 @@ export class DeliveryService {
     let initialStatus = DeliveryStatus.UNASSIGNED;
     let assignedDriverId: Types.ObjectId | null = null;
 
-    if (dto.driverId) {
-      const driver = await this.userModel.findOne(this.getDriverQuery(dto.driverId));
-      if (!driver) throw new NotFoundException('Driver not found');
+    const requestedDriverId = dto.driverId || dto.assignedDriver || dto.assignedDriverId;
+
+    if (requestedDriverId) {
+      const driver = await this.userModel.findOne(this.getDriverQuery(requestedDriverId));
+      if (!driver) {
+        throw new NotFoundException('Driver not found');
+      }
+      if (driver.role && driver.role !== Role.DRIVER) {
+        throw new BadRequestException('Assigned user is not a driver');
+      }
       if (!driver.isApproved) {
         throw new BadRequestException('Cannot assign an unapproved driver to a delivery');
       }
+      if (driver.isBlocked) {
+        throw new BadRequestException('Cannot assign a blocked driver to a delivery');
+      }
+      if (driver.isActive === false) {
+        throw new BadRequestException('Cannot assign an inactive driver to a delivery');
+      }
+
       assignedDriverId = driver._id;
       initialStatus = DeliveryStatus.ASSIGNED;
     }
@@ -99,10 +113,18 @@ export class DeliveryService {
       status: initialStatus,
     });
 
+    let resultDoc = delivery;
+    if (assignedDriverId) {
+      const populated = await this.deliveryModel
+        .findById(delivery._id)
+        .populate('assignedDriver', 'name email phoneNumber profile_image locationCoordinates');
+      if (populated) resultDoc = populated;
+    }
+
     return {
       message: 'Delivery created successfully',
       data: {
-        ...delivery.toObject(),
+        ...resultDoc.toObject(),
         trackingUrl: this.formatTrackingUrl(trackingToken),
       },
     };

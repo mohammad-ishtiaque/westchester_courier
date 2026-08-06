@@ -72,5 +72,11 @@ export class CreateDeliveryDto {
 
   @IsOptional() @IsString()
   driverId?: string;
+
+  @IsOptional() @IsString()
+  assignedDriver?: string;
+
+  @IsOptional() @IsString()
+  assignedDriverId?: string;
 }
 

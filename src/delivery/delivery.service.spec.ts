@@ -61,7 +61,7 @@ describe('DeliveryService', () => {
 
 
   describe('create', () => {
-    it('creates an UNASSIGNED delivery tagged with the creating admin', async () => {
+    it('creates an UNASSIGNED delivery tagged with the creating admin when no driver is provided', async () => {
       deliveryModel.create = jest.fn().mockResolvedValue(mockDelivery({ status: DeliveryStatus.UNASSIGNED }));
       const result = await service.create(adminUser as any, {
         customerName: 'Jane',
@@ -73,6 +73,54 @@ describe('DeliveryService', () => {
         expect.objectContaining({ createdBy: 'admin-1', status: DeliveryStatus.UNASSIGNED }),
       );
       expect(result.data).toBeDefined();
+    });
+
+    it('creates an ASSIGNED delivery when a valid driver is assigned on creation', async () => {
+      const createdDoc = mockDelivery({ status: DeliveryStatus.ASSIGNED, assignedDriver: driverId });
+      deliveryModel.create = jest.fn().mockResolvedValue(createdDoc);
+      deliveryModel.findById = jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(createdDoc),
+      });
+      userModel.findOne = jest.fn().mockResolvedValue(mockUser({ role: Role.DRIVER, isApproved: true }));
+
+      const result = await service.create(adminUser as any, {
+        customerName: 'Jane',
+        customerPhone: '555-0100',
+        pickupAddress: '1 Main St',
+        dropoffAddress: '2 Main St',
+        driverId,
+      });
+
+      expect(deliveryModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ createdBy: 'admin-1', status: DeliveryStatus.ASSIGNED }),
+      );
+      expect(result.data).toBeDefined();
+    });
+
+    it('throws NotFoundException if driverId does not exist', async () => {
+      userModel.findOne = jest.fn().mockResolvedValue(null);
+      await expect(
+        service.create(adminUser as any, {
+          customerName: 'Jane',
+          customerPhone: '555-0100',
+          pickupAddress: '1 Main St',
+          dropoffAddress: '2 Main St',
+          driverId: 'invalid-id',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException if assigned driver is not approved', async () => {
+      userModel.findOne = jest.fn().mockResolvedValue(mockUser({ role: Role.DRIVER, isApproved: false }));
+      await expect(
+        service.create(adminUser as any, {
+          customerName: 'Jane',
+          customerPhone: '555-0100',
+          pickupAddress: '1 Main St',
+          dropoffAddress: '2 Main St',
+          driverId,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
