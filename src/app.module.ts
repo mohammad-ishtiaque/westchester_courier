@@ -20,6 +20,7 @@ import { MailModule } from './common/mail/mail.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { ReportModule } from './report/report.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ReportModule } from './report/report.module';
     CmsModule,
     SupportModule,
     ReportModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [

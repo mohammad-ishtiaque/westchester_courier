@@ -58,6 +58,10 @@ export class User {
   @Prop({ default: false })
   isOnline: boolean;
 
+  // Device token for FCM Push Notifications
+  @Prop()
+  fcmToken?: string;
+
   // Reverse reference kept in sync by VehicleService.assign — quick lookup without a
   // join, e.g. for the driver app's own "my vehicle" display.
   @Prop({ type: Types.ObjectId, ref: 'Vehicle', default: null })

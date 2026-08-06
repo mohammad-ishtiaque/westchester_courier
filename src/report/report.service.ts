@@ -7,12 +7,15 @@ import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportStatusDto } from './dto/update-report-status.dto';
 import { QueryReportDto } from './dto/query-report.dto';
 import type { TokenPayload } from '../common/interfaces/token-payload.interface';
+import { NotificationService } from '../notification/notification.service';
+import { Role } from '../common/enums/role.enum';
 
 @Injectable()
 export class ReportService {
   constructor(
     @InjectModel(Report.name) private readonly reportModel: Model<ReportDocument>,
     @InjectModel(Delivery.name) private readonly deliveryModel: Model<DeliveryDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async create(dto: CreateReportDto, driver: TokenPayload) {
@@ -33,6 +36,16 @@ export class ReportService {
     });
     
     await report.save();
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Issue Reported',
+      body: `Driver reported an issue for order ${delivery.orderNumber}: ${dto.title}`,
+      type: 'ISSUE_REPORTED',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Issue reported successfully', data: report };
   }
 

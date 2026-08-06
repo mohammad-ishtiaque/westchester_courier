@@ -7,6 +7,7 @@ import { Delivery } from './schemas/delivery.schema';
 import { User } from '../user/schemas/user.schema';
 import { DeliveryStatus } from '../common/enums/delivery-status.enum';
 import { Role } from '../common/enums/role.enum';
+import { NotificationService } from '../notification/notification.service';
 
 describe('DeliveryService', () => {
   let service: DeliveryService;
@@ -52,6 +53,12 @@ describe('DeliveryService', () => {
         DeliveryService,
         { provide: getModelToken(Delivery.name), useValue: {} },
         { provide: getModelToken(User.name), useValue: userModel },
+        {
+          provide: NotificationService,
+          useValue: {
+            sendNotification: jest.fn().mockResolvedValue(true),
+          },
+        },
       ],
     }).compile();
 

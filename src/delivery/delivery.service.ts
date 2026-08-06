@@ -21,12 +21,14 @@ import { ProofOfDeliveryDto } from './dto/proof-of-delivery.dto';
 import { QueryDeliveryDto } from './dto/query-delivery.dto';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
 import { GetDriverRequestsDto, RequestTypeFilter } from './dto/get-driver-requests.dto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class DeliveryService {
   constructor(
     @InjectModel(Delivery.name) private readonly deliveryModel: Model<DeliveryDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   private generateOrderNumber(): string {
@@ -120,7 +122,26 @@ export class DeliveryService {
         .findById(delivery._id)
         .populate('assignedDriver', 'name email phoneNumber profile_image locationCoordinates');
       if (populated) resultDoc = populated;
+
+      await this.notificationService.sendNotification({
+        recipientId: assignedDriverId,
+        recipientRole: Role.DRIVER,
+        title: 'New Assigned',
+        body: `You have been assigned a new delivery (Order ${delivery.orderNumber}).`,
+        type: 'NEW_ASSIGNMENT',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
     }
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Delivery Created',
+      body: `Delivery ${delivery.orderNumber} created ${assignedDriverId ? 'and assigned to driver' : ''}.`,
+      type: 'NEW_ASSIGNMENT',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
 
     return {
       message: 'Delivery created successfully',
@@ -296,6 +317,25 @@ export class DeliveryService {
     delivery.rejectionReason = undefined;
     await delivery.save();
 
+    await this.notificationService.sendNotification({
+      recipientId: driver._id,
+      recipientRole: Role.DRIVER,
+      title: 'New Assigned',
+      body: `You have been assigned a new delivery (Order ${delivery.orderNumber}).`,
+      type: 'NEW_ASSIGNMENT',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Driver Assigned',
+      body: `Driver ${driver.name} assigned to delivery ${delivery.orderNumber}.`,
+      type: 'NEW_ASSIGNMENT',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return {
       message: 'Driver assigned successfully',
       data: {
@@ -345,6 +385,19 @@ export class DeliveryService {
     }
     delivery.status = DeliveryStatus.CANCELLED;
     await delivery.save();
+
+    if (delivery.assignedDriver) {
+      await this.notificationService.sendNotification({
+        recipientId: delivery.assignedDriver,
+        recipientRole: Role.DRIVER,
+        title: 'Delivery Cancelled',
+        body: `Delivery ${delivery.orderNumber} was cancelled by admin.`,
+        type: 'STATUS_UPDATE',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
+    }
+
     return { message: 'Delivery cancelled successfully' };
   }
 
@@ -807,6 +860,18 @@ export class DeliveryService {
     }
     delivery.status = DeliveryStatus.DRIVER_ACCEPTED;
     await delivery.save();
+
+    const driverUser = await this.userModel.findById(driver.userId);
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Delivery Accepted',
+      body: `Driver ${driverUser?.name || ''} accepted delivery ${delivery.orderNumber}.`,
+      type: 'DELIVERY_ACCEPTED',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Delivery accepted by driver', data: delivery };
   }
 
@@ -820,6 +885,18 @@ export class DeliveryService {
     delivery.rejectionReason = dto.reason;
     delivery.assignedDriver = null;
     await delivery.save();
+
+    const driverUser = await this.userModel.findById(driver.userId);
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Delivery Rejected',
+      body: `Driver ${driverUser?.name || ''} rejected delivery ${delivery.orderNumber}: ${dto.reason || 'No reason provided'}.`,
+      type: 'DELIVERY_REJECTED',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Delivery rejected by driver', data: delivery };
   }
 
@@ -834,6 +911,16 @@ export class DeliveryService {
     }
     delivery.status = DeliveryStatus.DRIVER_TO_PICKUP;
     await delivery.save();
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Driver En Route',
+      body: `Driver is en route to pickup location for order ${delivery.orderNumber}.`,
+      type: 'STATUS_UPDATE',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Driver heading to pickup location', data: delivery };
   }
 
@@ -849,6 +936,28 @@ export class DeliveryService {
     }
     delivery.status = DeliveryStatus.PICKED_UP;
     await delivery.save();
+
+    if (delivery.assignedDriver) {
+      await this.notificationService.sendNotification({
+        recipientId: delivery.assignedDriver,
+        recipientRole: Role.DRIVER,
+        title: 'Package Picked Up',
+        body: `Package for order ${delivery.orderNumber} picked up successfully.`,
+        type: 'STATUS_UPDATE',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
+    }
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Package Picked Up',
+      body: `Driver picked up package for order ${delivery.orderNumber}.`,
+      type: 'STATUS_UPDATE',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Marked as picked up', data: delivery };
   }
 
@@ -860,6 +969,28 @@ export class DeliveryService {
     }
     delivery.status = DeliveryStatus.IN_TRANSIT;
     await delivery.save();
+
+    if (delivery.assignedDriver) {
+      await this.notificationService.sendNotification({
+        recipientId: delivery.assignedDriver,
+        recipientRole: Role.DRIVER,
+        title: 'In Transit',
+        body: `Order ${delivery.orderNumber} is in transit to delivery address.`,
+        type: 'STATUS_UPDATE',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
+    }
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'In Transit',
+      body: `Order ${delivery.orderNumber} is now in transit.`,
+      type: 'STATUS_UPDATE',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Marked as in transit', data: delivery };
   }
 
@@ -871,6 +1002,28 @@ export class DeliveryService {
     }
     delivery.status = DeliveryStatus.OUT_FOR_DELIVERY;
     await delivery.save();
+
+    if (delivery.assignedDriver) {
+      await this.notificationService.sendNotification({
+        recipientId: delivery.assignedDriver,
+        recipientRole: Role.DRIVER,
+        title: 'Out for Delivery',
+        body: `Order ${delivery.orderNumber} is out for final delivery leg.`,
+        type: 'STATUS_UPDATE',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
+    }
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Out for Delivery',
+      body: `Order ${delivery.orderNumber} is out for delivery.`,
+      type: 'STATUS_UPDATE',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Marked as out for delivery', data: delivery };
   }
 
@@ -904,6 +1057,28 @@ export class DeliveryService {
     delivery.recipientName = dto.recipientName;
     delivery.deliveredAt = new Date();
     await delivery.save();
+
+    if (delivery.assignedDriver) {
+      await this.notificationService.sendNotification({
+        recipientId: delivery.assignedDriver,
+        recipientRole: Role.DRIVER,
+        title: 'Delivery Completed',
+        body: `Order ${delivery.orderNumber} delivered successfully.`,
+        type: 'STATUS_UPDATE',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
+    }
+
+    await this.notificationService.sendNotification({
+      recipientRole: Role.ADMIN,
+      title: 'Delivery Completed',
+      body: `Order ${delivery.orderNumber} has been delivered successfully.`,
+      type: 'STATUS_UPDATE',
+      deliveryId: delivery._id,
+      orderNumber: delivery.orderNumber,
+    });
+
     return { message: 'Delivery completed successfully', data: delivery };
   }
 
