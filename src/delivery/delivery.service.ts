@@ -64,16 +64,17 @@ export class DeliveryService {
       if (!driver) {
         throw new NotFoundException('Driver not found');
       }
-      if (driver.role && driver.role !== Role.DRIVER) {
+      const driverObj = driver as any;
+      if (driverObj.role && driverObj.role !== Role.DRIVER) {
         throw new BadRequestException('Assigned user is not a driver');
       }
       if (!driver.isApproved) {
         throw new BadRequestException('Cannot assign an unapproved driver to a delivery');
       }
-      if (driver.isBlocked) {
+      if (driverObj.isBlocked) {
         throw new BadRequestException('Cannot assign a blocked driver to a delivery');
       }
-      if (driver.isActive === false) {
+      if (driverObj.isActive === false) {
         throw new BadRequestException('Cannot assign an inactive driver to a delivery');
       }
 
