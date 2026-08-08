@@ -74,6 +74,16 @@ export class DeliveryController {
     return this.deliveryService.removeDriver(id);
   }
 
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
+  @Patch(':id/admin-status')
+  adminUpdateStatus(
+    @Param('id') id: string,
+    @CurrentUser() admin: TokenPayload,
+    @Body() dto: UpdateDeliveryStatusDto,
+  ) {
+    return this.deliveryService.adminUpdateStatus(id, admin, dto);
+  }
+
   @Roles(Role.ADMIN, Role.SUPER_ADMIN, Role.DRIVER)
   @Patch(':id/status')
   @UseInterceptors(

@@ -254,9 +254,6 @@ export class DeliveryService {
 
   async update(id: string, dto: UpdateDeliveryDto) {
     const delivery = await this.findByIdOrThrow(id);
-    if (delivery.status !== DeliveryStatus.UNASSIGNED && delivery.status !== DeliveryStatus.ASSIGNED) {
-      throw new BadRequestException('Only UNASSIGNED or ASSIGNED deliveries can be edited by admin');
-    }
 
     if (dto.title != null) delivery.title = dto.title;
     if (dto.parcelType != null) delivery.parcelType = dto.parcelType;
@@ -401,16 +398,36 @@ export class DeliveryService {
     return { message: 'Delivery cancelled successfully' };
   }
 
+  async adminUpdateStatus(id: string, user: TokenPayload, dto: UpdateDeliveryStatusDto) {
+    const delivery = await this.findByIdOrThrow(id);
+    delivery.status = dto.status;
+    if (dto.reason) delivery.rejectionReason = dto.reason;
+    await delivery.save();
+
+    if (delivery.assignedDriver) {
+      await this.notificationService.sendNotification({
+        recipientId: delivery.assignedDriver,
+        recipientRole: Role.DRIVER,
+        title: 'Delivery Status Updated',
+        body: `Delivery ${delivery.orderNumber} status was updated to ${dto.status} by admin.${dto.reason ? ` Reason: ${dto.reason}` : ''}`,
+        type: 'STATUS_UPDATE',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
+    }
+
+    return {
+      message: `Delivery status updated to ${dto.status} by admin`,
+      data: {
+        ...delivery.toObject(),
+        trackingUrl: this.formatTrackingUrl(delivery.trackingToken),
+      },
+    };
+  }
+
   async updateStatus(id: string, user: TokenPayload, dto: UpdateDeliveryStatusDto) {
     if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
-      const delivery = await this.findByIdOrThrow(id);
-      delivery.status = dto.status;
-      if (dto.reason) delivery.rejectionReason = dto.reason;
-      await delivery.save();
-      return {
-        message: `Delivery status updated to ${dto.status} by admin`,
-        data: delivery,
-      };
+      return this.adminUpdateStatus(id, user, dto);
     }
 
     switch (dto.status) {
