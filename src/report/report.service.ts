@@ -90,14 +90,42 @@ export class ReportService {
   }
 
   async updateStatus(id: string, dto: UpdateReportStatusDto) {
-    const report = await this.reportModel.findByIdAndUpdate(
-      id,
-      { status: dto.status },
-      { new: true }
-    );
+    const report = await this.reportModel.findById(id);
     if (!report) {
       throw new NotFoundException('Report not found');
     }
-    return { message: 'Report status updated successfully', data: report };
+
+    report.status = dto.status;
+    await report.save();
+
+    if (dto.deliveryStatus && report.delivery) {
+      const delivery = await this.deliveryModel.findById(report.delivery);
+      if (delivery) {
+        delivery.status = dto.deliveryStatus;
+        if (dto.reason) {
+          delivery.rejectionReason = dto.reason;
+        }
+        await delivery.save();
+
+        if (delivery.assignedDriver) {
+          await this.notificationService.sendNotification({
+            recipientId: delivery.assignedDriver,
+            recipientRole: Role.DRIVER,
+            title: 'Delivery Status Updated',
+            body: `Delivery ${delivery.orderNumber} status was changed to ${dto.deliveryStatus} upon resolving report.${dto.reason ? ` Reason: ${dto.reason}` : ''}`,
+            type: 'STATUS_UPDATE',
+            deliveryId: delivery._id,
+            orderNumber: delivery.orderNumber,
+          });
+        }
+      }
+    }
+
+    const updatedReport = await this.reportModel
+      .findById(id)
+      .populate('driver', 'name email phoneNumber profile_image')
+      .populate('delivery', 'orderNumber createdAt status');
+
+    return { message: 'Report status updated successfully', data: updatedReport };
   }
 }
