@@ -1047,9 +1047,10 @@ export class DeliveryService {
     await this.assertOwnershipIfDriver(delivery, driver);
     if (
       delivery.status !== DeliveryStatus.IN_TRANSIT &&
-      delivery.status !== DeliveryStatus.OUT_FOR_DELIVERY
+      delivery.status !== DeliveryStatus.OUT_FOR_DELIVERY &&
+      delivery.status !== DeliveryStatus.DELIVERED
     ) {
-      throw new BadRequestException('Delivery must be IN_TRANSIT or OUT_FOR_DELIVERY before proof of delivery can be submitted');
+      throw new BadRequestException('Delivery must be IN_TRANSIT, OUT_FOR_DELIVERY, or DELIVERED to submit proof of delivery');
     }
     delivery.status = DeliveryStatus.DELIVERED;
     if (dto.proofOfDeliveryImage) delivery.proofOfDeliveryImage = dto.proofOfDeliveryImage;
