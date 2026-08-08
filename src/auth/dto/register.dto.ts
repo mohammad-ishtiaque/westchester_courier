@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 import { Role } from '../../common/enums/role.enum';
 
 export class RegisterDto {
@@ -17,4 +17,8 @@ export class RegisterDto {
 
   @IsEnum(Role, { message: 'Invalid role' })
   role: Role;
+
+  @IsOptional()
+  @IsString()
+  fcmToken?: string;
 }

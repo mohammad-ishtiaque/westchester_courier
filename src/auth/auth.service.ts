@@ -94,7 +94,12 @@ export class AuthService {
       activationCodeExpire,
     });
 
-    const profileData = { authId: auth._id, name: dto.name, email: dto.email };
+    const profileData = {
+      authId: auth._id,
+      name: dto.name,
+      email: dto.email,
+      ...(dto.fcmToken && { fcmToken: dto.fcmToken }),
+    };
     if (dto.role === Role.ADMIN || dto.role === Role.SUPER_ADMIN) {
       await this.adminModel.create(profileData);
     } else {
@@ -190,6 +195,13 @@ export class AuthService {
 
     const profile = await this.findProfile(auth);
     if (!profile) throw new NotFoundException('Account detail not found');
+
+    if (dto.fcmToken) {
+      await this.userModel.updateOne(
+        { _id: profile._id },
+        { $set: { fcmToken: dto.fcmToken } },
+      );
+    }
 
     const tokens = this.signTokens({
       authId: String(auth._id),
