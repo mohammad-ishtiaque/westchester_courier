@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getMessaging, Message } from 'firebase-admin/messaging';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Notification, NotificationDocument } from './schemas/notification.schema';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { Role } from '../common/enums/role.enum';
@@ -18,11 +22,68 @@ export interface SendNotificationPayload {
 }
 
 @Injectable()
-export class NotificationService {
+export class NotificationService implements OnModuleInit {
+  private isFirebaseInitialized = false;
+
   constructor(
     @InjectModel(Notification.name) private readonly notificationModel: Model<NotificationDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
   ) {}
+
+  onModuleInit() {
+    this.initFirebaseAdmin();
+  }
+
+  private initFirebaseAdmin() {
+    if (getApps().length > 0) {
+      this.isFirebaseInitialized = true;
+      return;
+    }
+
+    try {
+      const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+      const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+      const projectId = process.env.FIREBASE_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+      let credentialObj: any = null;
+
+      if (serviceAccountPath) {
+        const resolvedPath = path.isAbsolute(serviceAccountPath)
+          ? serviceAccountPath
+          : path.resolve(process.cwd(), serviceAccountPath);
+        if (fs.existsSync(resolvedPath)) {
+          credentialObj = cert(resolvedPath);
+        } else {
+          console.warn(`[Firebase Admin] Service account file not found at: ${resolvedPath}`);
+        }
+      } else if (serviceAccountJson) {
+        const parsed = JSON.parse(
+          serviceAccountJson.startsWith('{')
+            ? serviceAccountJson
+            : Buffer.from(serviceAccountJson, 'base64').toString('utf8'),
+        );
+        credentialObj = cert(parsed);
+      } else if (projectId && clientEmail && privateKey) {
+        credentialObj = cert({
+          projectId,
+          clientEmail,
+          privateKey: privateKey.replace(/\\n/g, '\n'),
+        });
+      }
+
+      if (credentialObj) {
+        initializeApp({ credential: credentialObj });
+        this.isFirebaseInitialized = true;
+        console.log('[Firebase Admin] Firebase App initialized successfully');
+      } else {
+        console.log('[Firebase Admin] No Firebase credentials provided in env. FCM push will run in simulated mode.');
+      }
+    } catch (err: any) {
+      console.error(`[Firebase Admin Init Error] ${err?.message || err}`);
+    }
+  }
 
   async saveFcmToken(user: TokenPayload, dto: UpdateFcmTokenDto) {
     if (user.userId) {
@@ -83,32 +144,40 @@ export class NotificationService {
       return;
     }
 
-    // FCM Server Key or Firebase Admin API mock / integration logic
-    const fcmServerKey = process.env.FCM_SERVER_KEY;
-    if (!fcmServerKey) {
+    if (!this.isFirebaseInitialized) {
       console.log(`[FCM Push Simulated] To ${user.name} (${user.email}) -> Title: "${title}", Body: "${body}" [FCM Token: ${user.fcmToken}]`);
       return;
     }
 
     try {
-      const response = await fetch('https://fcm.googleapis.com/fcm/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `key=${fcmServerKey}`,
+      const message: Message = {
+        token: user.fcmToken,
+        notification: {
+          title,
+          body,
         },
-        body: JSON.stringify({
-          to: user.fcmToken,
-          notification: { title, body },
-          data,
+        data: data || {},
+        android: {
           priority: 'high',
-        }),
-      });
+          notification: {
+            sound: 'default',
+            channelId: 'high_importance_channel',
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1,
+            },
+          },
+        },
+      };
 
-      const resData = await response.json();
-      console.log(`[FCM Push Response] Result:`, resData);
+      const response = await getMessaging().send(message);
+      console.log(`[FCM Push Success] Sent to ${user.email}. Response ID: ${response}`);
     } catch (err: any) {
-      console.log(`[FCM Push Error] ${err?.message || err}`);
+      console.error(`[FCM Push Error] Failed sending to ${user.email}: ${err?.message || err}`);
     }
   }
 

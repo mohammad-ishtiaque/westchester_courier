@@ -4,4 +4,6 @@ dist
 *.log
 coverage
 uploads/
+firebase-service-account.json
+
 
