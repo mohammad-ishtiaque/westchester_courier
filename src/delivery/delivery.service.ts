@@ -296,11 +296,10 @@ export class DeliveryService {
   async assignDriver(id: string, dto: AssignDriverDto) {
     const delivery = await this.findByIdOrThrow(id);
     if (
-      delivery.status !== DeliveryStatus.UNASSIGNED &&
-      delivery.status !== DeliveryStatus.ASSIGNED &&
-      delivery.status !== DeliveryStatus.REJECTED
+      delivery.status === DeliveryStatus.DELIVERED ||
+      delivery.status === DeliveryStatus.CANCELLED
     ) {
-      throw new BadRequestException('Cannot assign driver once delivery has been accepted or is in progress');
+      throw new BadRequestException('Cannot assign driver to a completed or cancelled delivery');
     }
 
     const driver = await this.userModel.findOne(this.getDriverQuery(dto.driverId));
@@ -344,13 +343,30 @@ export class DeliveryService {
 
   async removeDriver(id: string) {
     const delivery = await this.findByIdOrThrow(id);
-    if (delivery.status !== DeliveryStatus.ASSIGNED) {
-      throw new BadRequestException('Can only remove driver before the driver accepts the delivery');
+    if (
+      delivery.status === DeliveryStatus.DELIVERED ||
+      delivery.status === DeliveryStatus.CANCELLED
+    ) {
+      throw new BadRequestException('Cannot remove driver from a completed or cancelled delivery');
     }
+
+    const previousDriverId = delivery.assignedDriver;
 
     delivery.assignedDriver = null;
     delivery.status = DeliveryStatus.UNASSIGNED;
     await delivery.save();
+
+    if (previousDriverId) {
+      await this.notificationService.sendNotification({
+        recipientId: previousDriverId,
+        recipientRole: Role.DRIVER,
+        title: 'Delivery Unassigned',
+        body: `You have been unassigned from delivery (Order ${delivery.orderNumber}).`,
+        type: 'UNASSIGNED',
+        deliveryId: delivery._id,
+        orderNumber: delivery.orderNumber,
+      });
+    }
 
     return {
       message: 'Driver removed successfully',

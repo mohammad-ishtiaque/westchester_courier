@@ -132,8 +132,8 @@ describe('DeliveryService', () => {
   });
 
   describe('assignDriver & removeDriver', () => {
-    it('rejects assigning a driver to a delivery already in transit', async () => {
-      deliveryModel.findById = jest.fn().mockResolvedValue(mockDelivery({ status: DeliveryStatus.IN_TRANSIT }));
+    it('rejects assigning a driver to a delivery that is already DELIVERED', async () => {
+      deliveryModel.findById = jest.fn().mockResolvedValue(mockDelivery({ status: DeliveryStatus.DELIVERED }));
       await expect(service.assignDriver('delivery-1', { driverId })).rejects.toThrow(BadRequestException);
     });
 
@@ -147,12 +147,18 @@ describe('DeliveryService', () => {
       expect(doc.save).toHaveBeenCalled();
     });
 
-    it('removes assigned driver before driver accepts', async () => {
-      const doc = mockDelivery({ status: DeliveryStatus.ASSIGNED, assignedDriver: new Types.ObjectId(otherDriverId) });
+    it('removes assigned driver even after driver accepts', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.DRIVER_ACCEPTED, assignedDriver: new Types.ObjectId(otherDriverId) });
       deliveryModel.findById = jest.fn().mockResolvedValue(doc);
       await service.removeDriver('delivery-1');
       expect(doc.assignedDriver).toBeNull();
       expect(doc.status).toBe(DeliveryStatus.UNASSIGNED);
+    });
+
+    it('rejects removing a driver from a DELIVERED delivery', async () => {
+      const doc = mockDelivery({ status: DeliveryStatus.DELIVERED, assignedDriver: new Types.ObjectId(otherDriverId) });
+      deliveryModel.findById = jest.fn().mockResolvedValue(doc);
+      await expect(service.removeDriver('delivery-1')).rejects.toThrow(BadRequestException);
     });
   });
 
