@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '../auth/auth.module';
 import { UserModule } from '../user/user.module';
 import { Delivery, DeliverySchema } from '../delivery/schemas/delivery.schema';
+import { Vehicle, VehicleSchema } from '../vehicle/schemas/vehicle.schema';
 import { DriverManagementController } from './driver-management.controller';
 import { DriverManagementService } from './driver-management.service';
 
@@ -10,7 +11,10 @@ import { DriverManagementService } from './driver-management.service';
   imports: [
     AuthModule,
     UserModule,
-    MongooseModule.forFeature([{ name: Delivery.name, schema: DeliverySchema }]),
+    MongooseModule.forFeature([
+      { name: Delivery.name, schema: DeliverySchema },
+      { name: Vehicle.name, schema: VehicleSchema },
+    ]),
   ],
   controllers: [DriverManagementController],
   providers: [DriverManagementService],

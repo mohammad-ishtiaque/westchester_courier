@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Auth, AuthDocument } from '../auth/schemas/auth.schema';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { Delivery, DeliveryDocument } from '../delivery/schemas/delivery.schema';
+import { Vehicle, VehicleDocument } from '../vehicle/schemas/vehicle.schema';
 import { DeliveryStatus } from '../common/enums/delivery-status.enum';
 import { Role } from '../common/enums/role.enum';
 import { CreateDriverDto } from './dto/create-driver.dto';
@@ -16,6 +17,7 @@ export class DriverManagementService {
     @InjectModel(Auth.name) private readonly authModel: Model<AuthDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Delivery.name) private readonly deliveryModel: Model<DeliveryDocument>,
+    @InjectModel(Vehicle.name) private readonly vehicleModel: Model<VehicleDocument>,
   ) {}
 
   // Admin-initiated — the account is created already active (isActive: true), since an
@@ -185,9 +187,27 @@ export class DriverManagementService {
   async remove(id: string) {
     const driver = await this.userModel.findById(id);
     if (!driver) throw new NotFoundException('Driver not found');
+
     if (driver.assignedVehicle) {
-      throw new BadRequestException('Unassign this driver\'s vehicle before removing their account');
+      await this.vehicleModel.updateOne(
+        { _id: driver.assignedVehicle },
+        { assignedDriver: null },
+      );
     }
+
+    await this.deliveryModel.updateMany(
+      {
+        assignedDriver: driver._id,
+        status: { $nin: [DeliveryStatus.DELIVERED, DeliveryStatus.CANCELLED] },
+      },
+      {
+        $set: {
+          assignedDriver: null,
+          status: DeliveryStatus.UNASSIGNED,
+        },
+      },
+    );
+
     await this.authModel.deleteOne({ _id: driver.authId });
     await driver.deleteOne();
     return { message: 'Driver removed successfully' };

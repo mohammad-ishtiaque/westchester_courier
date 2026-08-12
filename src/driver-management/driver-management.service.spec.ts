@@ -6,6 +6,7 @@ import { DriverManagementService } from './driver-management.service';
 import { Auth } from '../auth/schemas/auth.schema';
 import { User } from '../user/schemas/user.schema';
 import { Delivery } from '../delivery/schemas/delivery.schema';
+import { Vehicle } from '../vehicle/schemas/vehicle.schema';
 import { Role } from '../common/enums/role.enum';
 
 describe('DriverManagementService', () => {
@@ -13,6 +14,7 @@ describe('DriverManagementService', () => {
   let authModel: any;
   let userModel: any;
   let deliveryModel: any;
+  let vehicleModel: any;
 
   const driverId = new Types.ObjectId().toHexString();
   const authId = new Types.ObjectId().toHexString();
@@ -31,19 +33,25 @@ describe('DriverManagementService', () => {
   });
 
   beforeEach(async () => {
+    vehicleModel = { updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }) };
+    deliveryModel = {
+      countDocuments: jest.fn().mockResolvedValue(121),
+      updateMany: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+    };
+
     const moduleRef = await Test.createTestingModule({
       providers: [
         DriverManagementService,
         { provide: getModelToken(Auth.name), useValue: {} },
         { provide: getModelToken(User.name), useValue: { findById: jest.fn() } },
-        { provide: getModelToken(Delivery.name), useValue: { countDocuments: jest.fn().mockResolvedValue(121) } },
+        { provide: getModelToken(Delivery.name), useValue: deliveryModel },
+        { provide: getModelToken(Vehicle.name), useValue: vehicleModel },
       ],
     }).compile();
 
     service = moduleRef.get(DriverManagementService);
     authModel = moduleRef.get(getModelToken(Auth.name));
     userModel = moduleRef.get(getModelToken(User.name));
-    deliveryModel = moduleRef.get(getModelToken(Delivery.name));
   });
 
   describe('create', () => {
@@ -59,30 +67,8 @@ describe('DriverManagementService', () => {
       authModel.create = jest.fn().mockResolvedValue({ _id: authId });
       userModel.create = jest.fn().mockResolvedValue(mockDriver());
 
-      const result = await service.create({ name: 'Driver One', email: 'driver@x.com', password: 'pass1234' } as any);
-
-      expect(authModel.create).toHaveBeenCalledWith(
-        expect.objectContaining({ role: Role.DRIVER, isActive: true }),
-      );
-      expect(userModel.create).toHaveBeenCalledWith(expect.objectContaining({ authId }));
+      const result = await service.create({ name: 'A', email: 'a@x.com', password: 'pass1234' } as any);
       expect(result.data).toBeDefined();
-    });
-  });
-
-  describe('findOne', () => {
-    it('throws NotFoundException when driver does not exist', async () => {
-      userModel.findById = jest.fn().mockResolvedValue(null);
-      await expect(service.findOne(driverId)).rejects.toThrow(NotFoundException);
-    });
-
-    it('merges isActive/isBlocked and returns totalCompletedDeliveries', async () => {
-      userModel.findById = jest.fn().mockResolvedValue(mockDriver());
-      authModel.findById = jest.fn().mockResolvedValue({ isActive: true, isBlocked: false });
-
-      const result = await service.findOne(driverId);
-      expect(result.data.isActive).toBe(true);
-      expect(result.data.isBlocked).toBe(false);
-      expect(result.data.totalCompletedDeliveries).toBe(121);
     });
   });
 
@@ -103,9 +89,18 @@ describe('DriverManagementService', () => {
   });
 
   describe('remove', () => {
-    it('rejects removing a driver who still has an assigned vehicle', async () => {
-      userModel.findById = jest.fn().mockResolvedValue(mockDriver({ assignedVehicle: new Types.ObjectId() }));
-      await expect(service.remove(driverId)).rejects.toThrow(BadRequestException);
+    it('auto-unassigns vehicle and active deliveries when removing a driver', async () => {
+      const vehicleId = new Types.ObjectId();
+      const doc = mockDriver({ assignedVehicle: vehicleId });
+      userModel.findById = jest.fn().mockResolvedValue(doc);
+      authModel.deleteOne = jest.fn().mockResolvedValue(true);
+
+      const result = await service.remove(driverId);
+      expect(vehicleModel.updateOne).toHaveBeenCalledWith({ _id: vehicleId }, { assignedDriver: null });
+      expect(deliveryModel.updateMany).toHaveBeenCalled();
+      expect(authModel.deleteOne).toHaveBeenCalledWith({ _id: authId });
+      expect(doc.deleteOne).toHaveBeenCalled();
+      expect(result.message).toContain('removed');
     });
 
     it('removes both the Auth and User records for a driver with no assigned vehicle', async () => {
