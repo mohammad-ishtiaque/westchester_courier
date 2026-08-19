@@ -111,6 +111,7 @@ export class DeliveryService {
       dropoffCoordinates: this.toGeoPoint(dto.dropoffLng, dto.dropoffLat),
 
       packageDescription: dto.packageDescription,
+      shareDetails: dto.shareDetails !== undefined ? dto.shareDetails : true,
       createdBy: admin.userId,
       assignedDriver: assignedDriverId,
       status: initialStatus,
@@ -277,6 +278,7 @@ export class DeliveryService {
     if (dto.deliveryNote != null) delivery.deliveryNote = dto.deliveryNote;
 
     if (dto.packageDescription != null) delivery.packageDescription = dto.packageDescription;
+    if (dto.shareDetails != null) delivery.shareDetails = dto.shareDetails;
 
     const pickupGeo = this.toGeoPoint(dto.pickupLng, dto.pickupLat);
     if (pickupGeo) delivery.pickupCoordinates = pickupGeo;
@@ -1118,7 +1120,7 @@ export class DeliveryService {
 
   // ---------- Public Customer Live Tracking ----------
 
-  async getTrackingInfoByToken(tokenOrOrderNumber: string) {
+  async getTrackingInfoByToken(tokenOrOrderNumber: string, withDetailsQuery?: string | boolean) {
     const delivery = await this.deliveryModel
       .findOne({
         $or: [{ trackingToken: tokenOrOrderNumber }, { orderNumber: tokenOrOrderNumber }],
@@ -1129,8 +1131,43 @@ export class DeliveryService {
       throw new NotFoundException('Delivery tracking information not found');
     }
 
+    let showDetails: boolean;
+    if (withDetailsQuery !== undefined && withDetailsQuery !== null && withDetailsQuery !== '') {
+      if (typeof withDetailsQuery === 'boolean') {
+        showDetails = withDetailsQuery;
+      } else {
+        const lower = String(withDetailsQuery).toLowerCase().trim();
+        showDetails = lower === 'true' || lower === '1';
+      }
+    } else {
+      showDetails = delivery.shareDetails ?? true;
+    }
+
     const driver: any = delivery.assignedDriver;
     const trackingUrl = this.formatTrackingUrl(delivery.trackingToken);
+
+    if (!showDetails) {
+      return {
+        message: 'Live tracking details fetched successfully',
+        data: {
+          orderNumber: delivery.orderNumber,
+          status: delivery.status,
+          pickupCoordinates: delivery.pickupCoordinates || null,
+          dropoffCoordinates: delivery.dropoffCoordinates || null,
+          currentLocation: delivery.currentLocation || driver?.locationCoordinates || null,
+          trackingToken: delivery.trackingToken,
+          trackingUrl,
+          withDetails: false,
+          driver: driver
+            ? {
+                name: driver.name,
+                profileImage: driver.profile_image,
+                locationCoordinates: driver.locationCoordinates,
+              }
+            : null,
+        },
+      };
+    }
 
     return {
       message: 'Live tracking details fetched successfully',
@@ -1139,6 +1176,7 @@ export class DeliveryService {
         status: delivery.status,
         title: delivery.title,
         parcelType: delivery.parcelType,
+        size: delivery.size,
         weight: delivery.weight,
         customerName: delivery.customerName,
         customerEmail: delivery.customerEmail,
@@ -1163,6 +1201,7 @@ export class DeliveryService {
         deliveredAt: delivery.deliveredAt || null,
         trackingToken: delivery.trackingToken,
         trackingUrl,
+        withDetails: true,
         driver: driver
           ? {
               name: driver.name,

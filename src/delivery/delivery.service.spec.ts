@@ -338,4 +338,54 @@ describe('DeliveryService', () => {
       expect((result as any).summary).toBeUndefined();
     });
   });
+
+  describe('getTrackingInfoByToken', () => {
+    it('returns full tracking info with details when withDetails is true or defaulted', async () => {
+      const deliveryDoc = mockDelivery({
+        customerName: 'Jane Doe',
+        customerPhone: '1234567890',
+        pickupAddress: 'Pickup St',
+        dropoffAddress: 'Dropoff St',
+        shareDetails: true,
+      });
+      deliveryModel.findOne = jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(deliveryDoc),
+      });
+
+      const result = await service.getTrackingInfoByToken('token123', 'true');
+      expect(result.data.withDetails).toBe(true);
+      expect(result.data.customerName).toBe('Jane Doe');
+      expect(result.data.pickupAddress).toBe('Pickup St');
+    });
+
+    it('returns map-only tracking info without project details when withDetails is false', async () => {
+      const deliveryDoc = mockDelivery({
+        customerName: 'Jane Doe',
+        customerPhone: '1234567890',
+        pickupAddress: 'Pickup St',
+        dropoffAddress: 'Dropoff St',
+        pickupCoordinates: { type: 'Point', coordinates: [-73.9, 40.7] },
+        dropoffCoordinates: { type: 'Point', coordinates: [-73.8, 40.8] },
+        shareDetails: true,
+      });
+      deliveryModel.findOne = jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(deliveryDoc),
+      });
+
+      const result = await service.getTrackingInfoByToken('token123', 'false');
+      expect(result.data.withDetails).toBe(false);
+      expect(result.data.pickupCoordinates).toEqual({ type: 'Point', coordinates: [-73.9, 40.7] });
+      expect(result.data.dropoffCoordinates).toEqual({ type: 'Point', coordinates: [-73.8, 40.8] });
+      expect((result.data as any).customerName).toBeUndefined();
+      expect((result.data as any).pickupAddress).toBeUndefined();
+    });
+
+    it('throws NotFoundException if tracking token is invalid', async () => {
+      deliveryModel.findOne = jest.fn().mockReturnValue({
+        populate: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(service.getTrackingInfoByToken('invalidtoken')).rejects.toThrow(NotFoundException);
+    });
+  });
 });

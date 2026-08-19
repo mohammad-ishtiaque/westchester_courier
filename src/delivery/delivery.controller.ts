@@ -25,8 +25,11 @@ export class DeliveryController {
 
   @Public()
   @Get('track/:token')
-  trackDelivery(@Param('token') token: string) {
-    return this.deliveryService.getTrackingInfoByToken(token);
+  trackDelivery(
+    @Param('token') token: string,
+    @Query('withDetails') withDetails?: string,
+  ) {
+    return this.deliveryService.getTrackingInfoByToken(token, withDetails);
   }
 
   // ---------- Admin ----------

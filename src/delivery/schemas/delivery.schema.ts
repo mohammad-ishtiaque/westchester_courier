@@ -23,6 +23,9 @@ export class Delivery {
   @Prop({ unique: true, sparse: true })
   trackingToken?: string;
 
+  @Prop({ default: true })
+  shareDetails?: boolean;
+
   @Prop()
   title?: string;
 
