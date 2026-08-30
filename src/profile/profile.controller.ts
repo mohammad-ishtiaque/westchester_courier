@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ProfileService } from './profile.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -7,11 +7,9 @@ import { Role } from '../common/enums/role.enum';
 import type { TokenPayload } from '../common/interfaces/token-payload.interface';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetupDriverProfileDto } from './dto/setup-driver-profile.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { buildDiskStorage, imageFileFilter } from '../common/utils/upload.util';
 
-// No global @Roles() here on purpose — every authenticated role (DRIVER, USER, ADMIN,
-// SUPER_ADMIN) has a profile and can view/edit their own. The global JwtAuthGuard
-// still applies (nothing here is @Public()).
 @Controller('profile')
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
@@ -21,19 +19,13 @@ export class ProfileController {
     return this.profileService.getMe(user);
   }
 
-  // Accepts multipart/form-data so the driver can upload their profile image as a file.
-  // All text fields (driverId, dateOfBirth, phoneNumber, lat, lng, address) are sent
-  // as regular form fields alongside the file. lat/lng are coerced from string → number
-  // in the DTO via @Transform before class-validator runs.
-  // The uploaded file is written to uploads/profile-images/ on disk; its relative path
-  // is stored in MongoDB as a string (e.g. "uploads/profile-images/1722000000-123.jpg").
   @Roles(Role.DRIVER)
   @Patch('driver-setup')
   @UseInterceptors(
     FileInterceptor('profileImage', {
       storage: buildDiskStorage('profile-images'),
       fileFilter: imageFileFilter,
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB cap
+      limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
   setupDriverProfile(
@@ -41,8 +33,6 @@ export class ProfileController {
     @Body() dto: SetupDriverProfileDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    // Convert the multer file to a portable path string for MongoDB.
-    // Replace backslashes (Windows) so the stored value is always forward-slash.
     const profileImagePath = file ? file.path.replace(/\\/g, '/') : undefined;
     return this.profileService.setupDriverProfile(user, dto, profileImagePath);
   }
@@ -52,7 +42,7 @@ export class ProfileController {
     FileInterceptor('profileImage', {
       storage: buildDiskStorage('profile-images'),
       fileFilter: imageFileFilter,
-      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB cap
+      limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
   updateMe(
@@ -63,6 +53,10 @@ export class ProfileController {
     const profileImagePath = file ? file.path.replace(/\\/g, '/') : undefined;
     return this.profileService.updateMe(user, dto, profileImagePath);
   }
-}
 
+  @Delete('me')
+  deleteMe(@CurrentUser() user: TokenPayload, @Body() dto: DeleteAccountDto) {
+    return this.profileService.deleteMe(user, dto);
+  }
+}
 

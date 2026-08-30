@@ -1,23 +1,22 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from '../user/schemas/user.schema';
 import { Admin, AdminDocument } from '../admin/schemas/admin.schema';
+import { Auth, AuthDocument } from '../auth/schemas/auth.schema';
 import { Role } from '../common/enums/role.enum';
 import { TokenPayload } from '../common/interfaces/token-payload.interface';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetupDriverProfileDto } from './dto/setup-driver-profile.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 
-// Backs every Figma "Settings"/profile screen (driver + admin) — one service, two
-// collections, routed by the role already carried in the JWT (same pattern as
-// AuthService.findProfile). No separate "AdminProfileController" and
-// "DriverProfileController" needed since the shape of "view/edit my own profile"
-// is identical for both roles.
 @Injectable()
 export class ProfileService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Admin.name) private readonly adminModel: Model<AdminDocument>,
+    @InjectModel(Auth.name) private readonly authModel: Model<AuthDocument>,
   ) {}
 
   private isAdminRole(role: Role) {
@@ -44,8 +43,6 @@ export class ProfileService {
     driver.driverId = dto.driverId;
     driver.dateOfBirth = new Date(dto.dateOfBirth);
     driver.phoneNumber = dto.phoneNumber;
-    // profileImagePath is the disk path returned by multer (e.g. "uploads/profile-images/xxx.jpg").
-    // Stored as-is in MongoDB; the frontend prepends the server base URL to render the image.
     if (profileImagePath != null) driver.profile_image = profileImagePath;
     if (dto.address != null) driver.address = dto.address;
     driver.locationCoordinates = {
@@ -57,7 +54,6 @@ export class ProfileService {
     await driver.save();
     return { message: 'Driver profile setup completed successfully. Awaiting admin approval.', data: driver };
   }
-
 
   async updateMe(user: TokenPayload, dto: UpdateProfileDto, profileImagePath?: string) {
     const profile = this.isAdminRole(user.role)
@@ -72,7 +68,7 @@ export class ProfileService {
     else if (dto.profileImage != null) profile.profile_image = dto.profileImage;
 
     if (!this.isAdminRole(user.role)) {
-      const userProfile = profile as UserDocument;
+      const userProfile = profile as unknown as UserDocument;
       if (dto.driverId != null) userProfile.driverId = dto.driverId;
       if (dto.dateOfBirth != null) userProfile.dateOfBirth = new Date(dto.dateOfBirth);
       if (dto.lng != null && dto.lat != null) {
@@ -85,6 +81,37 @@ export class ProfileService {
 
     await profile.save();
     return { message: 'Profile updated successfully', data: profile };
+  }
+
+  async deleteMe(user: TokenPayload, dto: DeleteAccountDto) {
+    if (!dto || !dto.password) {
+      throw new BadRequestException('Password is required to delete your account');
+    }
+
+    const auth = (user.authId ? await this.authModel.findById(user.authId).select('+password') : null)
+      || await this.authModel.findOne({ email: user.email }).select('+password');
+
+    if (!auth) {
+      throw new NotFoundException('Account credentials not found');
+    }
+
+    const isMatch = await bcrypt.compare(dto.password, auth.password);
+    if (!isMatch) {
+      throw new BadRequestException('Incorrect password. Account deletion failed.');
+    }
+
+    const isAdmin = this.isAdminRole(user.role);
+    const profile = isAdmin
+      ? await this.adminModel.findByIdAndDelete(user.userId)
+      : await this.userModel.findByIdAndDelete(user.userId);
+
+    await this.authModel.deleteOne({ _id: auth._id });
+
+    return {
+      success: true,
+      message: 'Account deleted successfully',
+      data: profile,
+    };
   }
 }
 

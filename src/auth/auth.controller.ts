@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Patch, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Patch, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -13,6 +13,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -81,10 +82,15 @@ export class AuthController {
     return this.authService.resetPassword(dto);
   }
 
-  // No @Public() — protected by the global JwtAuthGuard, any authenticated role may
-  // change their own password (equivalent to the template's auth(config.auth_level.user)).
   @Patch('change-password')
   changePassword(@CurrentUser() user: TokenPayload, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user, dto);
   }
+
+  @Delete('delete-account')
+  @HttpCode(HttpStatus.OK)
+  deleteAccount(@CurrentUser() user: TokenPayload, @Body() dto: DeleteAccountDto) {
+    return this.authService.deleteAccount(user, dto);
+  }
 }
+

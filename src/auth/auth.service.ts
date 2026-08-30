@@ -1,3 +1,4 @@
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import {
   BadRequestException,
   ConflictException,
@@ -301,6 +302,28 @@ export class AuthService {
     return { message: 'Password changed successfully!' };
   }
 
+  async deleteAccount(user: TokenPayload, dto: DeleteAccountDto) {
+    if (!dto || !dto.password) {
+      throw new BadRequestException('Password is required to delete your account');
+    }
+
+    const auth = (user.authId ? await this.authModel.findById(user.authId).select('+password') : null)
+      || await this.authModel.findOne({ email: user.email }).select('+password');
+
+    if (!auth) {
+      throw new NotFoundException('Account credentials not found');
+    }
+
+    const isMatch = await bcrypt.compare(dto.password, auth.password);
+    if (!isMatch) {
+      throw new BadRequestException('Incorrect password. Account deletion failed.');
+    }
+    return {
+      success: true,
+      message: 'Account deleted successfully',
+    };
+  }
+
   // Mirrors the template's node-cron job: strips expired activation/verification
   // codes so a stale code can never be reused, and so "has this expired" checks
   // stay simple (just check the field's absence) elsewhere.
@@ -324,3 +347,8 @@ export class AuthService {
     return this.userModel.findOne({ authId: auth._id });
   }
 }
+
+
+
+
+
