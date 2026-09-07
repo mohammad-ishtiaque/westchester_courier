@@ -20,13 +20,13 @@ export class SetupDriverProfileDto {
   phoneNumber: string;
 
   @IsNotEmpty()
-  @Transform(({ value }) => parseFloat(value))
+  @Transform(({ value }) => (value !== undefined && value !== null && value !== '' ? parseFloat(value) : value))
   @Min(-90)
   @Max(90)
   lat: number;
 
   @IsNotEmpty()
-  @Transform(({ value }) => parseFloat(value))
+  @Transform(({ value }) => (value !== undefined && value !== null && value !== '' ? parseFloat(value) : value))
   @Min(-180)
   @Max(180)
   lng: number;

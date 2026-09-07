@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs';
@@ -25,10 +26,13 @@ export function buildDiskStorage(folder: string) {
   });
 }
 
-/** Allowed image MIME types */
+/** Allowed image MIME types (including iOS HEIC/HEIF formats) */
 export function imageFileFilter(_req: any, file: Express.Multer.File, cb: any) {
-  if (!file.mimetype.match(/^image\/(jpeg|png|gif|webp)$/)) {
-    return cb(new Error('Only image files (jpeg, png, gif, webp) are allowed'), false);
+  if (
+    !file.mimetype.match(/^image\/(jpeg|jpg|png|gif|webp|heic|heif|pjpeg|x-png)$/i) &&
+    !file.mimetype.startsWith('image/')
+  ) {
+    return cb(new BadRequestException('Only image files (jpeg, jpg, png, gif, webp, heic) are allowed'), false);
   }
   cb(null, true);
 }

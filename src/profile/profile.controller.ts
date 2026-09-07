@@ -25,7 +25,7 @@ export class ProfileController {
     FileInterceptor('profileImage', {
       storage: buildDiskStorage('profile-images'),
       fileFilter: imageFileFilter,
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: 15 * 1024 * 1024 },
     }),
   )
   setupDriverProfile(
@@ -42,7 +42,7 @@ export class ProfileController {
     FileInterceptor('profileImage', {
       storage: buildDiskStorage('profile-images'),
       fileFilter: imageFileFilter,
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: 15 * 1024 * 1024 },
     }),
   )
   updateMe(
